@@ -1,0 +1,15 @@
+# Rust
+server/target/
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Логи и окружение
+*.log
+.env
+.env.*
+node_modules/
