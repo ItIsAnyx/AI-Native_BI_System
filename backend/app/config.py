@@ -8,8 +8,9 @@ from fastapi import HTTPException
 class Settings(BaseSettings):
     APP_NAME: str = "AI-Native_BI_System"
     BACKEND_KEY: str = Field(min_length=1)
-    MODEL_PATH: str = ""
-    MAX_NEW_TOKENS: int = Field(default=512, gt=0)
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434/v1"
+    MODEL_NAME: str = ""
+    REQUEST_TIMEOUT_SECONDS: float = Field(default=300, gt=0)
     MAX_REQUEST_LENGTH: int = Field(default=8000, gt=0)
     MAX_CONTEXT_LENGTH: int = Field(default=24000, gt=0)
     MAX_FILE_SIZE_MB: int = Field(default=10, gt=0)
