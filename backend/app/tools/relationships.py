@@ -1,6 +1,6 @@
 import math
 import pandas as pd
-from app.tools.column_values import _prepare_value
+from app.tools.column_values import _json_value
 
 
 def _get_correlation(data, first_column, second_column):
@@ -48,8 +48,8 @@ def analyze_relationship(df: pd.DataFrame, first_column: str, second_column: str
     pairs = []
     for (first_value, second_value), count in counts.head(limit).items():
         pairs.append({
-            "first_value": _prepare_value(first_value),
-            "second_value": _prepare_value(second_value),
+            "first_value": _json_value(first_value),
+            "second_value": _json_value(second_value),
             "count": int(count),
         })
 

@@ -1,5 +1,5 @@
 import pandas as pd
-from app.tools.column_values import _prepare_value
+from app.tools.column_values import _json_value
 
 
 def get_rows(df: pd.DataFrame, column: str, value, limit: int = 10) -> dict:
@@ -21,7 +21,7 @@ def get_rows(df: pd.DataFrame, column: str, value, limit: int = 10) -> dict:
         search_value = None
     else:
         matches = df[column].eq(value).fillna(False)
-        search_value = _prepare_value(value)
+        search_value = _json_value(value)
 
     matched_count = int(matches.sum())
     selected_rows = df.loc[matches].head(limit)
@@ -30,7 +30,7 @@ def get_rows(df: pd.DataFrame, column: str, value, limit: int = 10) -> dict:
     for record in selected_rows.to_dict(orient="records"):
         row = {}
         for name, cell in record.items():
-            row[name] = None if pd.isna(cell) else _prepare_value(cell)
+            row[name] = None if pd.isna(cell) else _json_value(cell)
         rows.append(row)
 
     return {

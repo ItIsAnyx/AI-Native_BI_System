@@ -40,6 +40,7 @@ def health():
 async def call_llm(
     client: AsyncOpenAI,
     messages: list[dict[str, str]],
+    use_tools: bool = False,
 ) -> str:
 
     if not settings.MODEL_NAME:
@@ -48,7 +49,7 @@ async def call_llm(
     out = await client.chat.completions.create(
         model=settings.MODEL_NAME,
         messages=messages,
-        tools=tools,
+        tools=tools if use_tools else [],
         temperature=0.6,
     )
     if not out.choices:
@@ -70,7 +71,7 @@ async def compact_context(
     summary = await call_llm(client, [
         {"role": "system", "content": summary_prompt},
         {"role": "user", "content": json.dumps(context[1:-1], ensure_ascii=False)},
-    ])
+    ], use_tools=False,)
     return [
         context[0],
         {"role": "assistant", "content": "Short summary of the previous dialogue:\n" + summary},
