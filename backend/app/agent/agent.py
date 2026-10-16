@@ -11,6 +11,7 @@ from app.config import settings, validate_key
 from app.agent.prompts import main_model_prompt, summary_prompt
 from app.data.csv_reader import check_loading_file
 from app.tools.dataset import read_dataset, info_to_str
+from app.tools.tools import tools
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ async def call_llm(
     out = await client.chat.completions.create(
         model=settings.MODEL_NAME,
         messages=messages,
+        tools=tools,
         temperature=0.6,
     )
     if not out.choices:
