@@ -1,50 +1,30 @@
-# Aster — фронтенд-прототип
+# React + Vite
 
-Интерактивный прототип веб-интерфейса «Aster» — ИИ-ассистента для планирования, написания текстов и исследований.
-Бэкенда и API-ключей нет: все данные фиктивные и живут в локальном состоянии страницы.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Возможности
+Currently, two official plugins are available:
 
-- **Вход:** валидация email и пароля, показ/скрытие пароля, состояние загрузки, демо-вход, переключение на регистрацию.
-- **Сайдбар:** новый чат, поиск, создание проектов (кнопка «+» у заголовка «Проекты»), новый чат внутри проекта, перенос чатов между проектами, недавние чаты, удаление чатов и проектов с подтверждением (при удалении проекта чаты можно оставить или удалить вместе с ним), аккаунт и выход.
-- **Чат:** ответы-заглушки с заголовком, нумерованными рекомендациями и следующими шагами; состояния пустого экрана, загрузки и ошибки; вложения.
-- **Вкладки:** Chat (рабочая), Dashboard и Data sources (заглушки).
-- **Адаптивность и доступность:** выдвижное меню на малых экранах, метки ARIA, видимый фокус, управление с клавиатуры.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Структура
+## React Compiler
 
-```
-.
-├── index.html        # разметка обеих страниц (вход и рабочее пространство)
-├── styles.css        # стили и дизайн-токены
-├── app.js            # вся логика прототипа (без зависимостей и сборки)
-└── server/           # необязательный локальный сервер на Rust
-    ├── Cargo.toml
-    ├── Cargo.lock
-    └── src/main.rs
-```
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Запуск
+## Expanding the ESLint configuration
 
-Самый простой способ — открыть `index.html` в браузере.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
 
-Через Rust-сервер (только стандартная библиотека, раздаёт статические файлы):
 
-```bash
-cd server
-cargo run                 # http://127.0.0.1:8080, раздаёт родительскую папку
-cargo run -- .. 3000      # своя папка и порт
+## Docker
+
+Run these commands from the `frontend` directory:
+
+```sh
+docker build -t hackaton-frontend --build-arg VITE_API_URL=http://localhost:8080 .
+docker run --rm -p 3000:3000 hackaton-frontend
 ```
 
-## Как попробовать
-
-- Любой email и пароль от 6 символов, либо кнопка «Войти в демо-режиме».
-- Email `error@aster.app` показывает ошибку входа.
-- Сообщение `/error` в чате показывает ошибку ответа с кнопкой «Повторить».
-- Состояние входа сохраняется в `localStorage` (ключ `aster-user`); чаты — только в памяти и сбрасываются при перезагрузке.
-
-## Что дальше
-
-- Подключить реальную авторизацию и API чата вместо заглушек в `login()` и `send()` (`app.js`).
-- Реализовать вкладки Dashboard и Data sources.
-- Сохранение истории чатов на стороне сервера.
+Open http://localhost:3000. `VITE_API_URL` is embedded into the frontend at
+build time; set it to an address reachable by the user's browser and rebuild
+the image when it changes. Local `.env` files are excluded from the image build.
