@@ -1,0 +1,71 @@
+:root{
+  --bg:#FAF8F4; --bg-2:#F3F0E9; --surface:#fff; --border:#E8E4DB; --border-2:#D9D4C8;
+  --text:#1F1D2B; --muted:#625F70; --accent:#4F46E5; --accent-h:#4338CA; --accent-soft:#EEF0FF;
+  --danger:#B42318; --danger-soft:#FEF3F2; --ok:#067647;
+  --r-sm:8px; --r:12px; --r-lg:18px; --side:292px;
+  --shadow:0 1px 2px rgba(31,29,43,.04),0 8px 24px rgba(31,29,43,.06);
+  font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+h1,h2,h3,p{margin:0}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+code{background:var(--bg-2);padding:1px 6px;border-radius:6px;font-size:.9em}
+.muted{color:var(--muted)} .small{font-size:13px} .center{text-align:center}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip-link{position:absolute;left:12px;top:-60px;background:var(--accent);color:#fff;padding:8px 14px;border-radius:var(--r-sm);z-index:100}
+.skip-link:focus{top:12px}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* Бренд */
+.brand{display:flex;align-items:center;gap:10px}
+.logo{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--accent);color:#fff}
+.logo .ic{width:18px;height:18px}
+.brand-name{font-weight:650;font-size:18px;letter-spacing:-.01em}
+.brand-lg .logo{width:40px;height:40px;border-radius:12px}
+.brand-lg .brand-name{font-size:22px}
+
+/* Кнопки */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:var(--r);border:1px solid transparent;font-weight:550;transition:background .15s,border-color .15s,transform .05s}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-h)}
+.btn-secondary{background:var(--surface);border-color:var(--border-2)}
+.btn-secondary:hover{background:var(--bg-2)}
+.btn-block{width:100%}
+.btn-sm{min-height:36px;font-size:14px}
+.btn[disabled]{opacity:.7;cursor:not-allowed}
+.icon-btn{display:grid;place-items:center;width:40px;height:40px;border:0;background:transparent;border-radius:10px;color:var(--muted);transition:background .15s,color .15s}
+.icon-btn:hover{background:var(--bg-2);color:var(--text)}
+.link{color:var(--accent);font-weight:550;text-decoration:none}
+.link:hover{text-decoration:underline}
+
+/* Поля */
+.field{margin-bottom:16px}
+.field label,.label-row label{display:block;font-weight:550;font-size:14px;margin-bottom:6px}
+.label-row{display:flex;justify-content:space-between;align-items:baseline}
+.input-wrap{position:relative}
+.input-wrap input{width:100%;min-height:44px;padding:0 14px 0 42px;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);transition:border-color .15s,box-shadow .15s}
+.input-wrap input::placeholder{color:#8B8798}
+.input-wrap input:hover{border-color:#C4BEAF}
+.input-wrap input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,70,229,.18)}
+.input-wrap .lead{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.input-wrap .in-input{position:absolute;right:4px;top:2px}
+#password{padding-right:46px}
+.input-wrap.invalid input{border-color:var(--danger)}
+.field-err{color:var(--danger);font-size:13px;min-height:0;margin-top:4px}
+.field-err:empty{display:none}
+
+.banner{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);margin-bottom:16px;font-size:14px}
+.banner-error{background:var(--danger-soft);color:var(--danger);border:1px solid #FDA29B}
+
+.spinner{display:none;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+.btn.loading .spinner{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+

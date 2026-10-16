@@ -1,0 +1,13 @@
+/* Вход */
+.login{min-height:100%;display:grid;place-items:center;padding:24px;background:
+  radial-gradient(900px 400px at 50% -10%,#EEF0FF 0%,transparent 70%),var(--bg)}
+.login-card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:36px 32px;box-shadow:var(--shadow)}
+.login-card .brand{margin-bottom:24px}
+.login-card h1{font-size:26px;letter-spacing:-.02em;line-height:1.2;margin-bottom:6px}
+.login-card form{margin:24px 0 0}
+.login-card .muted:not(.small){margin-bottom:0}
+.divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--muted);font-size:13px}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
+.login-card #switch-line{margin-top:20px}
+.hint{margin-top:14px;color:var(--muted);padding-top:14px;border-top:1px solid var(--border)}
+

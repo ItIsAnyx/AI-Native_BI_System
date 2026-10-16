@@ -7,7 +7,7 @@ export default function ProtectedRoute() {
     const { user, initialized } = useAuth();
 
     if (!initialized) {
-        return <p role="status">Проверяем сессию...</p>;
+        return <main className="status-screen" role="status">Проверяем вход…</main>;
     }
 
     if (!user) {

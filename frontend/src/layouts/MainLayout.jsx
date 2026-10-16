@@ -1,16 +1,13 @@
 import { Outlet } from "react-router";
-
-import Footer from "../components/common/Footer";
-import Header from "../components/common/Header";
+import Brand from "../components/common/Brand";
 
 export default function MainLayout() {
-    return (
-        <>
-            <Header/>
-
-            <Outlet/>
-
-            <Footer/>
-        </>
-    );
+  return (
+    <main className="login" id="main-anchor">
+      <div className="login-card">
+        <Brand large />
+        <Outlet />
+      </div>
+    </main>
+  );
 }

@@ -1,0 +1,72 @@
+@import "./styles/base.css";
+@import "./styles/auth.css";
+@import "./styles/workspace.css";
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+#root {
+  height: 100%;
+}
+a.btn {
+  text-decoration: none;
+}
+.input-wrap.is-password input {
+  padding-right: 46px;
+}
+.form-note {
+  margin-top: 20px;
+}
+.status-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+.toast {
+  border: 0;
+  text-align: left;
+}
+.session-badge {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.msg-files {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.composer textarea:disabled {
+  opacity: 0.65;
+}
+@media (hover: none) {
+  .row-actions {
+    background: var(--bg-2);
+    border-radius: 8px;
+  }
+}
+
+@media (max-width: 860px) {
+  .sidebar:not(.open) {
+    visibility: hidden;
+  }
+  .sidebar.open {
+    visibility: visible;
+  }
+}
+
+.text-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.assistant-text {
+  white-space: pre-wrap;
+}
