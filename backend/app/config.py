@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -28,17 +28,14 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(gt=0)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(gt=0)
 
-    FRONTEND_URL: str
+    FRONTEND_USE_URL: str = "http://127.0.0.1:11434/v1"
 
-    @field_validator("COOKIE_SAMESITE", mode="before")
-    @classmethod
-    def normalize_same_site(cls, value):
-        return value.lower() if isinstance(value, str) else value
-
-    @model_validator(mode="after")
-    def validate_cookie_settings(self):
-        if self.COOKIE_SAMESITE == "none" and not self.COOKIE_SECURE:
-            raise ValueError("SameSite=None requires COOKIE_SECURE=true")
-        return self
+    MODEL_NAME: str = ""
+    REQUEST_TIMEOUT_SECONDS: float = Field(default=300, gt=0)
+    MAX_REQUEST_LENGTH: int = Field(default=8000, gt=0)
+    MAX_CONTEXT_LENGTH: int = Field(default=24000, gt=0)
+    MAX_FILE_SIZE_MB: int = Field(default=10, gt=0)
+    MAX_FILE_RRL: str
 
 settings = Settings()
+
