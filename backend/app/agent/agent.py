@@ -11,7 +11,7 @@ from app.config import settings, validate_key
 from app.agent.prompts import main_model_prompt, summary_prompt
 from app.data.csv_reader import check_loading_file
 from app.tools.dataset import read_dataset, info_to_str
-from app.tools.tools import tools
+from app.tools.tools import tools, TOOL_FUNCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -40,24 +40,87 @@ def health():
 async def call_llm(
     client: AsyncOpenAI,
     messages: list[dict[str, str]],
+    df = None,
     use_tools: bool = False,
 ) -> str:
 
     if not settings.MODEL_NAME:
         raise HTTPException(status_code=503, detail="Model is not configured. Set MODEL_NAME and restart the application")
 
-    out = await client.chat.completions.create(
-        model=settings.MODEL_NAME,
-        messages=messages,
-        tools=tools if use_tools else [],
-        temperature=0.6,
-    )
-    if not out.choices:
-        raise HTTPException(status_code=502, detail="Model returned no results")
-    answer = out.choices[0].message.content
-    if not answer or not answer.strip():
-        raise HTTPException(status_code=502, detail="Model returned an empty answer")
-    return answer
+    working_messages = list(messages)
+    max_tool_calls = settings.MAX_TOOL_CALLS
+    tool_calls_used = 0
+
+    while True:
+        tools_enabled = (
+            use_tools and df is not None and tool_calls_used < max_tool_calls
+        )
+
+        out = await client.chat.completions.create(
+            model=settings.MODEL_NAME,
+            messages=working_messages,
+            tools=tools if tools_enabled else [],
+            tool_choice="auto" if tools_enabled else "none",
+            temperature=0.6,
+        )
+        if not out.choices:
+            raise HTTPException(status_code=502, detail="Model returned no results")
+
+        message = out.choices[0].message
+        if not message.tool_calls:
+            answer = message.content or ""
+
+            if not answer.strip():
+                raise HTTPException(status_code=502, detail="Model returned an empty answer")
+            return answer
+
+        if not tools_enabled:
+            raise HTTPException(status_code=502, detail="Model requested tools when they were disabled")
+
+        working_messages.append({
+            "role": "assistant",
+            "content": message.content or "",
+            "tool_calls": [
+                call.model_dump(exclude_none=True)
+                for call in message.tool_calls
+            ],
+        })
+
+        for tool_call in message.tool_calls:
+            if tool_calls_used >= max_tool_calls:
+                result = {
+                    "error": (
+                        "Tool-call limit reached. Answer using the available results."
+                    )
+                }
+            else:
+                tool_calls_used += 1
+                name = tool_call.function.name
+
+                try:
+                    if name not in TOOL_FUNCTIONS:
+                        raise ValueError(f"Unknown tool: {name}")
+
+                    args = json.loads(tool_call.function.arguments)
+                    if not isinstance(args, dict):
+                        raise ValueError("Tool arguments must be a JSON object")
+
+                    function = TOOL_FUNCTIONS[name]
+                    result = await run_in_threadpool(
+                        function,
+                        df=df,
+                        **args,
+                    )
+
+                except (ValueError, TypeError) as exc:
+                    result = {"error": str(exc)}
+
+            working_messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(result, ensure_ascii=False),
+            })
+            print(working_messages)
 
 
 async def compact_context(
@@ -102,6 +165,7 @@ async def get_response(
             raise HTTPException(status_code=422, detail="System prompt must be the first message")
         context.append({"role": "user", "content": request.message})
 
+        df = None
         if file is not None:
             await check_loading_file(file)
             df = await run_in_threadpool(read_dataset, file.file)
@@ -123,7 +187,7 @@ async def get_response(
     try:
         client = http_request.app.state.llm_client
         context = await compact_context(client, context)
-        answer = await call_llm(client, context)
+        answer = await call_llm(client, context, df=df, use_tools=True)
         context.append({"role": "assistant", "content": answer})
         return MessageResponse(
             message=answer,

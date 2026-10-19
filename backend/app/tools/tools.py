@@ -1,3 +1,13 @@
+from app.tools.column_values import get_column_values
+from app.tools.rows import get_rows
+from app.tools.relationships import analyze_relationship
+
+TOOL_FUNCTIONS = {
+    "get_column_values": get_column_values,
+    "get_rows": get_rows,
+    "analyze_relationship": analyze_relationship,
+}
+
 tools = [
     {
         "type": "function",
