@@ -35,24 +35,16 @@ export default function ChatComposer({ pending, onSend, notify }) {
   }
   function attach(event) {
     const selected = [...event.target.files];
-    setFiles((previous) => {
-      const combined = [...previous];
-      selected.forEach((file) => {
-        if (
-          !combined.some(
-            (f) =>
-              f.name === file.name &&
-              f.size === file.size &&
-              f.lastModified === file.lastModified,
-          )
-        )
-          combined.push(file);
-      });
-      return combined.slice(0, 5);
-    });
-    if (selected.length + files.length > 5)
-      notify("Можно прикрепить до 5 файлов.");
     event.target.value = "";
+    const file = selected[0];
+    if (!file) return;
+    // Бэкенд принимает один CSV-файл.
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      notify("Можно прикрепить только CSV-файл.");
+      return;
+    }
+    if (selected.length > 1) notify("Можно прикрепить только один файл.");
+    setFiles([file]);
   }
   return (
     <div className="composer-wrap">
@@ -105,8 +97,8 @@ export default function ChatComposer({ pending, onSend, notify }) {
           <input
             ref={fileInput}
             type="file"
+            accept=".csv,text/csv"
             hidden
-            multiple
             onChange={attach}
           />
           <span className="muted small kbd-hint">
@@ -123,8 +115,7 @@ export default function ChatComposer({ pending, onSend, notify }) {
         </div>
       </form>
       <p className="muted small center disclaimer">
-        Ответы пока демонстрационные, файлы не отправляются на сервер. «/error»
-        покажет ошибку.
+        Aster может ошибаться. К сообщению можно прикрепить один CSV-файл.
       </p>
     </div>
   );
