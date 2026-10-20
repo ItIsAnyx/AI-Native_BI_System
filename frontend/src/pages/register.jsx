@@ -1,5 +1,8 @@
-import { Navigate, NavLink, useLocation } from "react-router";
+import { NavLink, useLocation } from "react-router";
+import TransitionLink from "../components/common/TransitionLink";
+import TransitionRedirect from "../components/common/TransitionRedirect";
 
+import Icon from "../components/common/Icon";
 import Button from "../components/ui/Button";
 import Field from "../components/ui/Field";
 import { useAuth } from "../hooks/useAuth";
@@ -15,80 +18,89 @@ export default function Register() {
     failureMessage: "Не удалось зарегистрироваться. Попробуйте ещё раз.",
   });
 
-  if (initialized && user) return <Navigate to="/" replace />;
+  if (initialized && user) return <TransitionRedirect to="/" />;
 
   return (
     <>
       <h1>Создайте аккаунт</h1>
-      <p className="muted">
-        Начните планировать, писать и исследовать с Aster.
-      </p>
-      <div>
-        <form onSubmit={handleSubmit} noValidate aria-busy={loading}>
-          <Field
-            label="Имя пользователя"
-            name="username"
-            placeholder="Ваш логин"
-            autoComplete="username"
-            maxLength={255}
-            error={errors.username}
-          />
+      <p className="subtitle">Начните планировать, писать и исследовать с Aster</p>
 
-          <Field
-            label="Email"
-            name="email"
-            type="email"
-            placeholder="example@mail.com"
-            autoComplete="email"
-            maxLength={255}
-            error={errors.email}
-          />
+      <form
+        className="register-form"
+        onSubmit={handleSubmit}
+        noValidate
+        aria-busy={loading}
+      >
+        <Field
+          label="Имя пользователя"
+          name="username"
+          icon="user"
+          placeholder="Ваш логин"
+          autoComplete="username"
+          maxLength={255}
+          error={errors.username}
+        />
 
-          <Field
-            label="Пароль"
-            name="password"
-            type="password"
-            placeholder="Придумайте пароль"
-            autoComplete="new-password"
-            hint="Минимум 8 символов"
-            error={errors.password}
-          />
+        <Field
+          label="Email"
+          name="email"
+          type="email"
+          placeholder="example@mail.com"
+          autoComplete="email"
+          maxLength={255}
+          error={errors.email}
+        />
 
-          <Field
-            label="Подтверждение пароля"
-            name="confirmPassword"
-            type="password"
-            placeholder="Повторите пароль"
-            autoComplete="new-password"
-            error={errors.confirmPassword}
-          />
+        <Field
+          label="Пароль"
+          name="password"
+          type="password"
+          placeholder="Придумайте пароль"
+          autoComplete="new-password"
+          hint="Минимум 8 символов"
+          error={errors.password}
+        />
 
-          {errors.form && (
-            <p className="banner banner-error" role="alert">
-              {errors.form}
-            </p>
-          )}
+        <Field
+          label="Подтверждение пароля"
+          name="confirmPassword"
+          type="password"
+          placeholder="Повторите пароль"
+          autoComplete="new-password"
+          error={errors.confirmPassword}
+        />
 
-          <Button type="submit" className="btn-block" loading={loading}>
-            {loading ? "Регистрация..." : "Создать аккаунт"}
-          </Button>
-        </form>
-
-        <div className="form-note">
-          <p className="muted center small">
-            Уже есть аккаунт?{" "}
-            <NavLink className="link" to="/login" state={location.state}>
-              Войти
-            </NavLink>
+        {errors.form && (
+          <p className="banner banner-error" role="alert">
+            {errors.form}
           </p>
-        </div>
-      </div>
+        )}
+
+        <Button type="submit" className="btn-block" loading={loading}>
+          {loading ? (
+            "Регистрация..."
+          ) : (
+            <>
+              <span>Создать аккаунт</span>
+              <Icon name="arrow" className="arrow" />
+            </>
+          )}
+        </Button>
+      </form>
+
       <div className="divider">
         <span>или</span>
       </div>
-      <NavLink to="/demo" className="btn btn-secondary btn-block">
+      <TransitionLink to="/demo" className="btn btn-secondary btn-block">
         Войти в демо-режиме
-      </NavLink>
+      </TransitionLink>
+
+      <p className="footer muted center small">
+        Уже есть аккаунт?{" "}
+        <NavLink className="link" to="/login" state={location.state}>
+          Войти
+        </NavLink>
+      </p>
       <p className="hint small center">
         Демо доступно без регистрации. Вход в аккаунт проверяется сервером.
       </p>

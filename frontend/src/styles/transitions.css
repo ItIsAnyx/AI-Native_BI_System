@@ -1,0 +1,39 @@
+/* Анимация перехода между страницами входа/регистрации и рабочим пространством.
+   Работает через View Transitions API (viewTransition в react-router). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  animation-name: page-out;
+  animation-duration: 0.3s;
+}
+/* Новая страница появляется, когда старая уже почти исчезла: слои не просвечивают друг сквозь друга. */
+::view-transition-new(root) {
+  animation-name: page-in;
+  animation-duration: 0.4s;
+  animation-delay: 0.2s;
+  animation-fill-mode: backwards;
+}
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+    filter: blur(6px);
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

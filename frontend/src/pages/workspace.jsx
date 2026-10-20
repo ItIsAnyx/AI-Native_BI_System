@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useTransitionNavigate } from "../hooks/useTransitionNavigate";
 import { useAuth } from "../hooks/useAuth";
 import { useWorkspace } from "../hooks/useWorkspace";
 import { useToast } from "../hooks/useToast";
@@ -14,7 +14,7 @@ const demoUser = { id: "demo", login: "Анна Крылова", email: "demo@as
 
 export default function Workspace({ demo = false }) {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const navigate = useTransitionNavigate();
   const workspace = useWorkspace();
   const [query, setQuery] = useState("");
   const [drawer, setDrawer] = useState(false);
