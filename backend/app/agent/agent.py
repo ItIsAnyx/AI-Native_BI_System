@@ -27,9 +27,25 @@ class MessageRequest(BaseModel):
     context: list[ContextMessage] = Field(default_factory=list)
 
 
+class ChartArtifact(BaseModel):
+    chart_type: str
+    x_column: str
+    y_column: str
+    aggregation: str
+    total_rows: int
+    valid_rows: int
+    excluded_rows: int
+    available_points: int
+    plotted_points: int
+    truncated: bool
+    mime_type: Literal["image/png"]
+    image_base64: str
+
+
 class MessageResponse(BaseModel):
     message: str
     context: list[ContextMessage]
+    charts: list[ChartArtifact] = Field(default_factory=list)
 
 # Проверка работы API. НЕ ПРОВЕРЯЕТ РАБОТОСПОСОБНОСТЬ МОДЕЛИ
 @router.get("/api/health")
@@ -42,12 +58,29 @@ async def call_llm(
     messages: list[dict[str, str]],
     df = None,
     use_tools: bool = False,
+    chart_artifacts: list[dict] | None = None,
 ) -> str:
 
     if not settings.MODEL_NAME:
         raise HTTPException(status_code=503, detail="Model is not configured. Set MODEL_NAME and restart the application")
 
-    working_messages = list(messages)
+    working_messages = [dict(message) for message in messages]
+    if use_tools:
+        availability_note = (
+            f"\n\nCurrent request HAS an attached dataset: {len(df)} rows, {len(df.columns)} columns. "
+            "Dataset tools can access its full table. Use the supplied statistics and tools; "
+            "do not ask the user to attach the file again."
+        ) if df is not None else (
+            "\n\nCurrent request: NO dataset file is attached. Dataset tools are unavailable. "
+            "Saved statistics and examples do not provide the full table. "
+            "If the user requests a chart or full-table computation, ask them to attach the CSV again. "
+            "Do not reconstruct missing rows or claim to have generated a chart. "
+            "You may still answer questions supported by saved summary statistics."
+        )
+        if working_messages and working_messages[0]["role"] == "system":
+            working_messages[0]["content"] += availability_note
+        else:
+            working_messages.insert(0, {"role": "system", "content": availability_note})
     max_tool_calls = settings.MAX_TOOL_CALLS
     tool_calls_used = 0
 
@@ -111,6 +144,11 @@ async def call_llm(
                         df=df,
                         **args,
                     )
+                    if name == "build_chart":
+                        if chart_artifacts is not None:
+                            chart_artifacts.append(result)
+                        # Image bytes never enter the model context or chat history.
+                        result = {key: value for key, value in result.items() if key != "image_base64"}
 
                 except (ValueError, TypeError) as exc:
                     result = {"error": str(exc)}
@@ -120,7 +158,6 @@ async def call_llm(
                 "tool_call_id": tool_call.id,
                 "content": json.dumps(result, ensure_ascii=False),
             })
-            print(working_messages)
 
 
 async def compact_context(
@@ -185,11 +222,13 @@ async def get_response(
     try:
         client = http_request.app.state.llm_client
         context = await compact_context(client, context)
-        answer = await call_llm(client, context, df=df, use_tools=True)
+        charts = []
+        answer = await call_llm(client, context, df=df, use_tools=True, chart_artifacts=charts)
         context.append({"role": "assistant", "content": answer})
         return MessageResponse(
             message=answer,
             context=context,
+            charts=charts,
         )
 
     except APITimeoutError as exc:
