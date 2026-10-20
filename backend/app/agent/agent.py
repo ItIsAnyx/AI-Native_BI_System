@@ -7,7 +7,7 @@ from openai import AsyncOpenAI, APIConnectionError, APIStatusError, APITimeoutEr
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from app.config import settings, validate_key
+from app.config import settings
 from app.agent.prompts import main_model_prompt, summary_prompt
 from app.data.csv_reader import check_loading_file
 from app.tools.dataset import read_dataset, info_to_str
@@ -147,11 +147,9 @@ async def get_response(
     http_request: Request,
     payload: str = Form(...),
     file: UploadFile | None = File(None),
-    backend_key: str = Header(..., alias="BACKEND_KEY"),
 ) -> MessageResponse:
 
     try:
-        validate_key(backend_key)
         request = MessageRequest.model_validate_json(payload)
 
         if not request.message.strip():

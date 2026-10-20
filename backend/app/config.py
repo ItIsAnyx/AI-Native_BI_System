@@ -40,14 +40,4 @@ class Settings(BaseSettings):
     MAX_FILE_ROWS: int = Field(default=100000, gt=0)
     MAX_TOOL_CALLS: int = Field(default=5, gt=0)
 
-    BACKEND_KEY: str = Field(min_length=1)
-
 settings = Settings()
-
-def validate_key(backend_key: str) -> None:
-    if not compare_digest(
-        backend_key.encode("utf-8"),
-        settings.BACKEND_KEY.encode("utf-8"),
-    ):
-        raise HTTPException(status_code=403, detail="Invalid BACKEND_KEY")
-
