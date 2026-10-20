@@ -52,3 +52,6 @@ def info_to_str(df: pd.DataFrame) -> dict:
         "columns": columns_info,
         "example_strings": json.loads(df.head(5).to_json(orient="records")),
     }
+
+def read_dataset_and_gain_statistics(df: pd.DataFrame) -> dict:
+    return info_to_str(df)

@@ -2,9 +2,11 @@ from app.tools.column_values import get_column_values
 from app.tools.rows import get_rows
 from app.tools.relationships import analyze_relationship
 from app.tools.charts import build_chart, CHART_TYPES, AGGREGATIONS
+from app.tools.dataset import read_dataset_and_gain_statistics
 
 TOOL_FUNCTIONS = {
     "build_chart": build_chart,
+    "read_dataset_and_gain_statistics": read_dataset_and_gain_statistics,
     "get_column_values": get_column_values,
     "get_rows": get_rows,
     "analyze_relationship": analyze_relationship,
@@ -27,6 +29,19 @@ tools = [
                     "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 1000},
                 },
                 "required": ["x_column", "y_column", "chart_type"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_dataset_and_gain_statistics",
+            "description": "Получить структуру и статистику текущего прикреплённого датасета: число строк, названия и типы столбцов, пропуски, уникальные значения, среднее, минимум, максимум, медиану числовых столбцов и пять примеров строк. Используй, когда нужны эти сведения или названия столбцов для другого инструмента. Датасет подставляет приложение, аргументы не нужны.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
                 "additionalProperties": False,
             },
         },
