@@ -2,9 +2,10 @@ from app.tools.column_values import get_column_values
 from app.tools.rows import get_rows
 from app.tools.relationships import analyze_relationship
 from app.tools.charts import build_chart, CHART_TYPES, AGGREGATIONS
-from app.tools.dataset import read_dataset_and_gain_statistics
+from app.tools.dataset import list_sources, read_dataset_and_gain_statistics
 
 TOOL_FUNCTIONS = {
+    "list_sources": list_sources,
     "build_chart": build_chart,
     "read_dataset_and_gain_statistics": read_dataset_and_gain_statistics,
     "get_column_values": get_column_values,
@@ -16,8 +17,16 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "list_sources",
+            "description": "Получить ID, названия и описания CSV-источников текущего чата. Внутренние пути не возвращаются.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "build_chart",
-            "description": "Построить график по двум столбцам всей прикреплённой таблицы. Выбери тип по запросу: line — динамика, scatter — связь чисел, bar/barh — сравнение, area — площадь, pie — доли. Для повторяющихся категорий явно выбери sum, mean или count, если этого требует запрос. PNG возвращается пользователю отдельно; не придумывай ссылку на файл. Пропуски и бесконечности исключаются попарно. При превышении limit берутся первые точки после агрегации и сортировки; для line/area X сортируется по возрастанию.",
+            "description": "Построить график по двум столбцам сохранённого CSV-источника чата. Выбери тип по запросу: line — динамика, scatter — связь чисел, bar/barh — сравнение, area — площадь, pie — доли. Для повторяющихся категорий явно выбери sum, mean или count, если этого требует запрос. PNG возвращается пользователю отдельно; не придумывай ссылку на файл. Пропуски и бесконечности исключаются попарно. При превышении limit берутся первые точки после агрегации и сортировки; для line/area X сортируется по возрастанию.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -37,7 +46,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "read_dataset_and_gain_statistics",
-            "description": "Получить структуру и статистику текущего прикреплённого датасета: число строк, названия и типы столбцов, пропуски, уникальные значения, среднее, минимум, максимум, медиану числовых столбцов и пять примеров строк. Используй, когда нужны эти сведения или названия столбцов для другого инструмента. Датасет подставляет приложение, аргументы не нужны.",
+            "description": "Получить структуру и статистику CSV-источника чата: число строк, названия и типы столбцов, пропуски, уникальные значения, среднее, минимум, максимум, медиану числовых столбцов и пять примеров строк. Используй, когда нужны эти сведения или названия столбцов для другого инструмента. Датасет подставляет приложение; source_id можно не указывать для активного источника.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -101,3 +110,10 @@ tools = [
         },
     },
 ]
+
+for tool in tools:
+    if tool["function"]["name"] != "list_sources":
+        tool["function"]["parameters"]["properties"]["source_id"] = {
+            "type": "string",
+            "description": "ID CSV-источника из list_sources. Если не указан, используется активный источник чата.",
+        }

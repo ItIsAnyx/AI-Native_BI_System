@@ -5,6 +5,7 @@ services:
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
     volumes:
       - pg-data:/var/lib/postgresql/data
     ports:
@@ -15,5 +16,25 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_HOST: database
+      DB_PORT: 5432
+      OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
+      STORAGE_DIR: /app/storage
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - agent-data:/app/storage
+    depends_on:
+      database:
+        condition: service_healthy
+
 volumes:
   pg-data:
+  agent-data:

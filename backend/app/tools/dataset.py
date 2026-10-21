@@ -3,6 +3,7 @@ import math
 import pandas as pd
 from fastapi import HTTPException
 from app.config import settings
+from app.services import chat_storage
 
 from app.tools.column_values import get_column_values as get_column_values
 from app.tools.rows import get_rows as get_rows
@@ -55,3 +56,18 @@ def info_to_str(df: pd.DataFrame) -> dict:
 
 def read_dataset_and_gain_statistics(df: pd.DataFrame) -> dict:
     return info_to_str(df)
+
+
+def list_sources(sources: list[dict]) -> list[dict]:
+    return [
+        {key: source[key] for key in ("id", "name", "description", "type")}
+        for source in sources
+    ]
+
+
+def load_source(sources: list[dict], source_id: str | None):
+    source = next((source for source in sources if source["id"] == source_id), None)
+    if source is None:
+        raise ValueError("Select an available CSV source using source_id")
+    with chat_storage.existing_file(source["file_path"]).open("rb") as file:
+        return read_dataset(file)

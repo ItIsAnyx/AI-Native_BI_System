@@ -7,13 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from openai import AsyncOpenAI
 from contextlib import asynccontextmanager
+from starlette.concurrency import run_in_threadpool
 
 from app.api.auth import router as auth_router
 from app.api.user import router as user_router
-from app.agent.agent import router as agent_router
+from app.api.chat import router as chat_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await run_in_threadpool(Base.metadata.create_all, bind=engine)
+    print("БД инициализирована")
     async with AsyncOpenAI(
         base_url=settings.OLLAMA_BASE_URL,
         api_key="ollama",
@@ -35,12 +38,7 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(user_router, prefix="/api/users")
-app.include_router(agent_router)
-
-@app.on_event("startup")
-async def Start():
-    Base.metadata.create_all(bind=engine)
-    print("БД инициализирована")
+app.include_router(chat_router)
 
 if __name__ == "__main__":
     os.environ["NO_PROXY"] = "localhost,127.0.0.1"

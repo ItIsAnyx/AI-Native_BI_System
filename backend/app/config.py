@@ -39,5 +39,6 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = Field(default=10, gt=0)
     MAX_FILE_ROWS: int = Field(default=100000, gt=0)
     MAX_TOOL_CALLS: int = Field(default=5, gt=0)
+    STORAGE_DIR: Path = ENV_PATH.parent / "storage"
 
 settings = Settings()
