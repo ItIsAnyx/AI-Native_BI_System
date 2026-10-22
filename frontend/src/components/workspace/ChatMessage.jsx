@@ -1,4 +1,5 @@
 import Icon from "../common/Icon";
+import Markdown from "./Markdown";
 
 const suggestions = [
   "Составить подробный чек-лист",
@@ -68,7 +69,7 @@ export default function ChatMessage({
             )}
           </div>
         ) : message.source !== "demo" ? (
-          <p className="assistant-text">{message.text}</p>
+          <Markdown>{message.text}</Markdown>
         ) : (
           <>
             <h3>Предлагаемый план действий</h3>

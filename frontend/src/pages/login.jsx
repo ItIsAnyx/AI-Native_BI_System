@@ -1,4 +1,6 @@
-import { Navigate, NavLink, useLocation } from "react-router";
+import { NavLink, useLocation } from "react-router";
+import TransitionLink from "../components/common/TransitionLink";
+import TransitionRedirect from "../components/common/TransitionRedirect";
 
 import Button from "../components/ui/Button";
 import Field from "../components/ui/Field";
@@ -15,7 +17,7 @@ export default function Login() {
     failureMessage: "Не удалось войти. Попробуйте ещё раз.",
   });
 
-  if (initialized && user) return <Navigate to="/" replace />;
+  if (initialized && user) return <TransitionRedirect to="/" />;
 
   return (
     <>
@@ -80,9 +82,9 @@ export default function Login() {
       <div className="divider">
         <span>или</span>
       </div>
-      <NavLink to="/demo" className="btn btn-secondary btn-block">
+      <TransitionLink to="/demo" className="btn btn-secondary btn-block">
         Войти в демо-режиме
-      </NavLink>
+      </TransitionLink>
       <p className="hint small center">
         Демо доступно без регистрации. Вход в аккаунт проверяется сервером.
       </p>

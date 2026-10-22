@@ -4,6 +4,10 @@ import {
   initialWorkspace,
   workspaceReducer,
 } from "../features/workspace/workspaceReducer";
+import {
+  getAgentErrorText,
+  stripDatasetBlock,
+} from "../features/workspace/agentErrors";
 
 export function useWorkspace() {
   const [state, dispatch] = useReducer(workspaceReducer, initialWorkspace);
@@ -61,19 +65,32 @@ export function useWorkspace() {
         });
     dispatch({ type: "project-deleted", id, deleteChats });
   }
-  function receiveReply(chatId, message, retry = false) {
+  function receiveReply(chat, message) {
+    const chatId = chat.id;
     const controller = new AbortController();
     requests.current.set(chatId, controller);
+    // Файл отправляется заново с каждым сообщением, чтобы нейросеть могла вызывать инструменты по данным.
+    const file = message.files?.[0] ?? chat.file ?? null;
+    const context =
+      file && !message.files?.length
+        ? stripDatasetBlock(chat.context ?? [])
+        : (chat.context ?? []);
     workspaceApi
       .sendMessage(
-        { chatId, text: message.text, files: message.files },
-        { signal: controller.signal, retry },
+        { text: message.text, files: file ? [file] : [], context },
+        { signal: controller.signal },
       )
-      .then((reply) =>
-        dispatch({ type: "reply-received", chatId, message: reply }),
+      .then(({ message: reply, context: nextContext }) =>
+        dispatch({
+          type: "reply-received",
+          chatId,
+          message: reply,
+          context: nextContext,
+          file,
+        }),
       )
       .catch((error) => {
-        if (error.name !== "AbortError")
+        if (error.name !== "AbortError" && error.name !== "CanceledError")
           dispatch({
             type: "reply-received",
             chatId,
@@ -81,6 +98,7 @@ export function useWorkspace() {
               id: crypto.randomUUID(),
               role: "assistant",
               error: true,
+              errorText: getAgentErrorText(error),
             },
           });
       })
@@ -107,7 +125,7 @@ export function useWorkspace() {
         files: [...files],
       };
       dispatch({ type: "message-sent", chatId: chat.id, message });
-      receiveReply(chat.id, message);
+      receiveReply(chat, message);
       return true;
     } finally {
       sending.current = false;
@@ -123,7 +141,7 @@ export function useWorkspace() {
     const message = activeChat.messages.findLast((m) => m.role === "user");
     if (!message) return;
     dispatch({ type: "reply-started", chatId: activeChat.id });
-    receiveReply(activeChat.id, message, true);
+    receiveReply(activeChat, message);
   }
 
   return {

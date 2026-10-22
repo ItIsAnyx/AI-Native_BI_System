@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation } from "react-router";
+import { useTransitionNavigate } from "./useTransitionNavigate";
 import { getAuthDestination } from "../features/auth/getAuthDestination";
 import { getAuthErrors } from "../features/auth/getAuthErrors";
 
 export function useAuthForm({ submit, readForm, failureMessage }) {
-  const navigate = useNavigate();
+  const navigate = useTransitionNavigate();
   const location = useLocation();
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);

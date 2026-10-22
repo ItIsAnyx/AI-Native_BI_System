@@ -98,6 +98,8 @@ export function workspaceReducer(state, action) {
             ? {
                 ...c,
                 pending: false,
+                context: action.context ?? c.context,
+                file: action.file !== undefined ? action.file : c.file,
                 messages: [...c.messages, action.message],
               }
             : c,
