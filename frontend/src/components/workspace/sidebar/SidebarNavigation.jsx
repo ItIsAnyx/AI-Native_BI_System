@@ -65,11 +65,31 @@ export default function SidebarNavigation({
       <section>
         <h2 className="side-h">Недавние</h2>
         <ul className="list">{recent.map(row)}</ul>
-        {!recent.length && !projects.length && (
-          <p className="side-empty">
-            {search ? "Ничего не найдено по запросу." : "Чатов пока нет."}
+        {workspace.chatsLoading && (
+          <p className="side-empty" role="status">
+            Загрузка чатов…
           </p>
         )}
+        {workspace.chatsError && (
+          <p className="side-empty" role="alert">
+            Не удалось загрузить чаты.{" "}
+            <button
+              type="button"
+              className="link text-link"
+              onClick={workspace.reloadChats}
+            >
+              Повторить
+            </button>
+          </p>
+        )}
+        {!workspace.chatsLoading &&
+          !workspace.chatsError &&
+          !recent.length &&
+          !projects.length && (
+            <p className="side-empty">
+              {search ? "Ничего не найдено по запросу." : "Чатов пока нет."}
+            </p>
+          )}
       </section>
     </nav>
   );

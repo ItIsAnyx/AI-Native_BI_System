@@ -1,4 +1,5 @@
 import Icon from "../common/Icon";
+import { assetUrl } from "../../api/endpoints/workspaceApi";
 import Markdown from "./Markdown";
 
 const suggestions = [
@@ -54,7 +55,7 @@ export default function ChatMessage({
           <div className="err-box">
             <p>
               <Icon name="alert" />
-              Не удалось получить ответ. Повторите попытку.
+              {message.errorText ?? "Не удалось получить ответ. Повторите попытку."}
             </p>
             {canRetry && (
               <button
@@ -69,7 +70,25 @@ export default function ChatMessage({
             )}
           </div>
         ) : message.source !== "demo" ? (
-          <Markdown>{message.text}</Markdown>
+          <>
+            <Markdown>{message.text}</Markdown>
+            {message.charts?.map((chart) => (
+              <figure className="chart" key={chart.id}>
+                <a href={assetUrl(chart.url)} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={assetUrl(chart.url)}
+                    alt={`График: ${chart.y_column} по ${chart.x_column}`}
+                    loading="lazy"
+                  />
+                </a>
+                {chart.truncated && (
+                  <figcaption>
+                    Показано {chart.plotted_points} из {chart.available_points} точек.
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </>
         ) : (
           <>
             <h3>Предлагаемый план действий</h3>

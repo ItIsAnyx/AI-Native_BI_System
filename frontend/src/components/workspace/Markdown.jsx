@@ -7,6 +7,13 @@ const components = {
   a: ({ node, ...props }) => (
     <a {...props} target="_blank" rel="noopener noreferrer nofollow" />
   ),
+  // Картинки из ответа: ленивая загрузка, клик открывает оригинал в новой вкладке.
+  // eslint-disable-next-line no-unused-vars
+  img: ({ node, alt, src, ...props }) => (
+    <a href={src} target="_blank" rel="noopener noreferrer">
+      <img {...props} src={src} alt={alt ?? ""} loading="lazy" />
+    </a>
+  ),
   // Широкие таблицы прокручиваются внутри собственной обёртки, а не ломают чат.
   // eslint-disable-next-line no-unused-vars
   table: ({ node, ...props }) => (

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Icon from "../common/Icon";
 import ChatMessage from "./ChatMessage";
 
-export default function ChatThread({ chat, onSend, onRetry }) {
+export default function ChatThread({ chat, onSend, onRetry, onReload }) {
   const thread = useRef(null);
   useEffect(() => {
     if (thread.current) thread.current.scrollTop = thread.current.scrollHeight;
@@ -15,7 +15,28 @@ export default function ChatThread({ chat, onSend, onRetry }) {
       aria-live="polite"
       aria-label="Переписка"
     >
-      {!chat?.messages.length && (
+      {chat?.loading && (
+        <p className="muted center" role="status">
+          Загрузка переписки…
+        </p>
+      )}
+      {chat?.loadError && (
+        <div className="err-box">
+          <p>
+            <Icon name="alert" />
+            Не удалось загрузить переписку.
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={onReload}
+          >
+            <Icon name="retry" />
+            Повторить
+          </button>
+        </div>
+      )}
+      {!chat?.messages.length && !chat?.loading && !chat?.loadError && (
         <div className="empty">
           <span className="logo">
             <Icon name="spark" />
