@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     REQUEST_TIMEOUT_SECONDS: float = Field(default=300, gt=0)
     MAX_REQUEST_LENGTH: int = Field(default=8000, gt=0)
     MAX_CONTEXT_LENGTH: int = Field(default=24000, gt=0)
+    TOKENIZER_PATH: Path = ENV_PATH.parent / "models" / "tokenizer"
+    MAX_CONTEXT_TOKENS: int = Field(default=40960, gt=0)
+    MAX_RESPONSE_TOKENS: int = Field(default=4096, gt=0)
+    MAX_CONTINUATIONS: int = Field(default=2, ge=1)
     MAX_FILE_SIZE_MB: int = Field(default=10, gt=0)
     MAX_FILE_ROWS: int = Field(default=100000, gt=0)
     MAX_TOOL_CALLS: int = Field(default=5, gt=0)

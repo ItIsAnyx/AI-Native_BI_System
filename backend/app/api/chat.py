@@ -22,6 +22,7 @@ from app.tools.dataset import list_sources, read_dataset
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+running_chats: set[tuple[UUID, UUID | None]] = set()
 
 # Проверка работы API. НЕ ПРОВЕРЯЕТ РАБОТОСПОСОБНОСТЬ МОДЕЛИ
 @router.get("/api/health")
@@ -43,6 +44,9 @@ async def get_response(
 ) -> MessageResponse:
     saved_files = []
     persisted = False
+    new_source = None
+    user_message = None
+    locked_chats = []
     try:
         try:
             request = MessageRequest.model_validate_json(payload)
@@ -52,9 +56,20 @@ async def get_response(
         if not request.message.strip():
             raise HTTPException(status_code=422, detail="Message cannot be blank")
 
+        chat_key = (user_id, request.chat_id)
+        if chat_key in running_chats:
+            raise HTTPException(status_code=409, detail={
+                "code": "agent_busy",
+                "message": "Агент ещё обрабатывает предыдущий запрос. Дождитесь завершения.",
+            })
+        running_chats.add(chat_key)
+        locked_chats.append(chat_key)
         chat_id = request.chat_id
         if chat_id is None:
             chat_id = await run_in_threadpool(chat_repository.create_chat, user_id, request.message)
+            chat_key = (user_id, chat_id)
+            running_chats.add(chat_key)
+            locked_chats.append(chat_key)
         state = await run_in_threadpool(chat_repository.get_chat_state, chat_id, user_id)
         sources = state["sources"]
         active_source_id = str(request.source_id) if request.source_id else state["active_source_id"]
@@ -68,7 +83,6 @@ async def get_response(
         context.append({"role": "user", "content": request.message})
 
         df = None
-        new_source = None
         if file is not None:
             await check_loading_file(file)
             df = await run_in_threadpool(read_dataset, file.file)
@@ -88,6 +102,12 @@ async def get_response(
                 + "\n</dataset>"
             )
 
+        user_message = {
+            "id": str(uuid4()), "role": "user", "content": request.message,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "source_ids": [active_source_id] if active_source_id else [],
+        }
+        upload_message = dict(context[-1])
         client = http_request.app.state.llm_client
         context = await compact_context(client, context)
         charts = []
@@ -113,10 +133,7 @@ async def get_response(
 
         now = datetime.now(timezone.utc).isoformat()
         history = state["chat_history"] + [
-            {
-                "id": str(uuid4()), "role": "user", "content": request.message, "created_at": now,
-                "source_ids": [active_source_id] if active_source_id else [],
-            },
+            user_message,
             {
                 "id": str(message_id), "role": "assistant", "content": answer, "created_at": now,
                 "charts": [chart.model_dump(mode="json") for chart in saved_charts],
@@ -144,14 +161,39 @@ async def get_response(
             raise HTTPException(status_code=503, detail="Model not found. Check MODEL_NAME against ollama list") from exc
         raise HTTPException(status_code=502, detail="Ollama rejected the request. Check its logs") from exc
     finally:
-        if file is not None:
-            await file.close()
-        if not persisted:
-            for path in saved_files:
+        try:
+            if not persisted and new_source is not None and user_message is not None:
                 try:
-                    await run_in_threadpool(chat_storage.remove_file, path)
-                except OSError:
-                    logger.exception("Could not remove an uncommitted upload or artifact")
+                    latest = await run_in_threadpool(chat_repository.get_chat_state, chat_id, user_id)
+                    note = (
+                        "Предыдущая обработка была прервана. Загруженный CSV сохранён и доступен: "
+                        + json.dumps({"source_id": str(new_source["id"]), "filename": new_source["name"]}, ensure_ascii=False)
+                    )
+                    interrupted_context = latest["active_context"] or [{"role": "system", "content": main_model_prompt}]
+                    interrupted_context = interrupted_context + [upload_message, {"role": "assistant", "content": note}]
+                    interrupted_history = latest["chat_history"] + [user_message, {
+                        "id": str(uuid4()), "role": "assistant", "content": note,
+                        "created_at": datetime.now(timezone.utc).isoformat(), "charts": [],
+                    }]
+                    await run_in_threadpool(
+                        chat_repository.save_chat_state, chat_id, user_id, latest["version"],
+                        interrupted_history, interrupted_context, str(new_source["id"]), new_source,
+                    )
+                except Exception:
+                    logger.exception("Could not register the saved CSV after an interrupted request")
+            if not persisted:
+                for path in saved_files:
+                    if new_source is not None and path == new_source["file_path"]:
+                        continue
+                    try:
+                        await run_in_threadpool(chat_storage.remove_file, path)
+                    except OSError:
+                        logger.exception("Could not remove an uncommitted artifact")
+        finally:
+            for chat_key in locked_chats:
+                running_chats.discard(chat_key)
+            if file is not None:
+                await file.close()
 
 
 @router.post("/agent/chats", status_code=201)

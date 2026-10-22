@@ -1,5 +1,8 @@
+import csv
 import json
 import math
+import re
+from io import StringIO
 import pandas as pd
 from fastapi import HTTPException
 from app.config import settings
@@ -9,20 +12,98 @@ from app.tools.column_values import get_column_values as get_column_values
 from app.tools.rows import get_rows as get_rows
 from app.tools.relationships import analyze_relationship as analyze_relationship
 
+
+def dataset_column_names(header: list[str], width: int, warnings: list[str]) -> list[str]:
+    reserved = {name.strip() for name in header if name.strip()}
+    columns = []
+    for index in range(width):
+        original = header[index].strip() if index < len(header) else ""
+        name = original or (f"column_{index + 1}" if index < len(header) else f"_extra_column_{index - len(header) + 1}")
+        base = name
+        suffix = 2
+        while name in columns or (name != original and name in reserved):
+            name = f"{base}__{suffix}"
+            suffix += 1
+        columns.append(name)
+        if index < len(header) and name != original:
+            problem = "пустой" if not original else "повторяется"
+            warnings.append(f"Заголовок столбца {index + 1} {original!r} {problem}; используется имя {name!r}.")
+    return columns
+
+
 def read_dataset(file) -> pd.DataFrame:
+    warnings = []
     try:
-        df = pd.read_csv(file, encoding="utf-8-sig", nrows=settings.MAX_FILE_ROWS + 1)
+        text = file.read()
+        if isinstance(text, bytes):
+            text = text.decode("utf-8-sig")
+        else:
+            text = text.lstrip("\ufeff")
+        try:
+            delimiter = csv.Sniffer().sniff(text[:64 * 1024], delimiters=",;\t").delimiter
+        except csv.Error:
+            try:
+                delimiter = csv.Sniffer().sniff(text.splitlines()[0], delimiters=",;\t").delimiter
+            except (csv.Error, IndexError):
+                delimiter = ","
+        csv.field_size_limit(settings.MAX_FILE_SIZE_MB * 1024 * 1024)
+        reader = csv.reader(StringIO(text, newline=""), delimiter=delimiter, strict=True)
+        header = next(row for row in reader if row)
+        rows = []
+        mismatched_rows = 0
+        examples = []
+        for row in reader:
+            if not row:
+                continue
+            if len(row) != len(header):
+                mismatched_rows += 1
+                if len(examples) < 5:
+                    examples.append(f"строка {reader.line_num}: {len(row)} полей")
+            rows.append(row)
+            if len(rows) > settings.MAX_FILE_ROWS:
+                raise HTTPException(status_code=400, detail=f"Too many rows. Max: {settings.MAX_FILE_ROWS}")
+    except HTTPException:
+        raise
+    except StopIteration as exc:
+        raise HTTPException(status_code=400, detail="CSV is empty") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Cannot read CSV: {exc}") from exc
 
-    if len(df) > settings.MAX_FILE_ROWS:
-        raise HTTPException(status_code=400, detail=f"Too many rows. Max: {settings.MAX_FILE_ROWS}")
-
-    df.columns = df.columns.str.strip()
-    if df.columns.duplicated().any():
-        raise HTTPException(status_code=400, detail="Duplicate column names after stripping spaces")
-    for column in df.select_dtypes(include=["object", "string"]).columns:
-        df[column] = df[column].str.strip()
+    width = max([len(header)] + [len(row) for row in rows])
+    columns = dataset_column_names(header, width, warnings)
+    if mismatched_rows:
+        warnings.append(
+            f"В {mismatched_rows} строках число полей отличается от заголовка ({len(header)}): "
+            + "; ".join(examples)
+            + ". Недостающие поля отмечены как пропуски; дополнительные поля сохранены в отдельных столбцах."
+        )
+    df = pd.DataFrame([row + [None] * (width - len(row)) for row in rows], columns=columns, dtype="string")
+    key_columns = []
+    for column in columns:
+        values = df[column].str.strip().replace("", pd.NA)
+        words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", column).casefold()
+        named_key = bool({"id", "uuid", "guid", "код", "артикул", "идентификатор"} & set(re.findall(r"[^\W\d_]+", words)))
+        leading_zeros = bool(values.str.fullmatch(r"[+-]?0\d+").any())
+        if named_key or leading_zeros:
+            key_columns.append(column)
+            if leading_zeros or not values.dropna().str.fullmatch(r"[+-]?\d+").all():
+                warnings.append(
+                    f"Столбец {column!r} распознан как возможный ключ и сохранён строками: "
+                    "есть ведущие нули, буквы или другие нечисловые обозначения. Проверьте назначение столбца."
+                )
+        elif values.notna().any():
+            try:
+                values = pd.to_numeric(values, errors="raise")
+            except (ValueError, TypeError):
+                pass
+        df[column] = values
+    technical_id = "_row_id"
+    while technical_id in df.columns:
+        technical_id = "_" + technical_id
+    df.insert(0, technical_id, range(1, len(df) + 1))
+    df.attrs["warnings"] = warnings
+    df.attrs["key_columns"] = key_columns
+    df.attrs["technical_id_column"] = technical_id
     return df
 
 def info_to_str(df: pd.DataFrame) -> dict:
@@ -52,6 +133,9 @@ def info_to_str(df: pd.DataFrame) -> dict:
         "total_rows": len(df),
         "columns": columns_info,
         "example_strings": json.loads(df.head(5).to_json(orient="records")),
+        "warnings": list(df.attrs.get("warnings", [])),
+        "key_columns": list(df.attrs.get("key_columns", [])),
+        "technical_id_column": df.attrs.get("technical_id_column"),
     }
 
 def read_dataset_and_gain_statistics(df: pd.DataFrame) -> dict:

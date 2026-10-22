@@ -26,11 +26,12 @@ services:
       OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
       STORAGE_DIR: /app/storage
     ports:
-      - "8000:8000"
+      - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - agent-data:/app/storage
+      - ./backend/models:/app/models:ro
     depends_on:
       database:
         condition: service_healthy
