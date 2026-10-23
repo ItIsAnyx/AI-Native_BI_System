@@ -1,7 +1,47 @@
-export const initialWorkspace = { projects: [], chats: [], activeId: null };
+export const initialWorkspace = {
+  projects: [],
+  chats: [],
+  activeId: null,
+  chatsLoading: false,
+  chatsError: false,
+};
+
+const patchChat = (state, id, patch) => ({
+  ...state,
+  chats: state.chats.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+});
 
 export function workspaceReducer(state, action) {
   switch (action.type) {
+    case "chats-loading":
+      return { ...state, chatsLoading: true, chatsError: false };
+    case "chats-load-failed":
+      return { ...state, chatsLoading: false, chatsError: true };
+    case "chats-loaded": {
+      // Локальные черновики (ещё не отправленные на сервер) остаются сверху.
+      const known = new Set(state.chats.map((c) => c.serverId).filter(Boolean));
+      return {
+        ...state,
+        chatsLoading: false,
+        chatsError: false,
+        chats: [
+          ...state.chats,
+          ...action.chats.filter((c) => !known.has(c.serverId)),
+        ],
+      };
+    }
+    case "chat-loading":
+      return patchChat(state, action.id, { loading: true, loadError: false });
+    case "chat-load-failed":
+      return patchChat(state, action.id, { loading: false, loadError: true });
+    case "chat-loaded":
+      return patchChat(state, action.id, {
+        loading: false,
+        loadError: false,
+        loaded: true,
+        messages: action.messages,
+        sources: action.sources,
+      });
     case "project-created":
       return { ...state, projects: [...state.projects, action.project] };
     case "project-toggled":
@@ -98,8 +138,8 @@ export function workspaceReducer(state, action) {
             ? {
                 ...c,
                 pending: false,
-                context: action.context ?? c.context,
-                file: action.file !== undefined ? action.file : c.file,
+                serverId: action.serverId ?? c.serverId,
+                sources: action.sources ?? c.sources,
                 messages: [...c.messages, action.message],
               }
             : c,

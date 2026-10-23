@@ -3,9 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#FAF8F4" />
+    <meta name="theme-color" content="#fafafc" />
     <meta name="description" content="Aster — рабочее пространство для планирования, текстов и исследований." />
     <title>Aster — ассистент для вдумчивой работы</title>
+    <script>
+      // Тема ставится до первой отрисовки: без белой вспышки и белого фона при переходах между страницами.
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem("aster-theme");
+        } catch (e) {}
+        if (theme !== "dark" && theme !== "light")
+          theme =
+            window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
 </html>

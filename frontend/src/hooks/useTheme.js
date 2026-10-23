@@ -24,6 +24,11 @@ function systemTheme() {
 export function useTheme() {
   const [theme, setTheme] = useState(() => readStoredTheme() ?? systemTheme());
 
+  // Тема дублируется на <html>: от неё зависит фон страницы между кадрами анимации перехода.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
   useEffect(() => {
     if (readStoredTheme()) return undefined;
     const media = window.matchMedia?.(DARK_QUERY);

@@ -7,6 +7,14 @@ export function getAgentErrorText(error) {
   const status = error.response?.status;
   if (!status) return "Сервер не отвечает. Проверьте, что бэкенд запущен.";
   switch (status) {
+    case 401:
+      return "Сессия истекла. Войдите в аккаунт снова.";
+    case 404:
+      return "Чат не найден на сервере.";
+    case 409: {
+      const detail = error.response?.data?.detail;
+      return detail?.message ?? "Агент ещё обрабатывает предыдущий запрос.";
+    }
     case 400:
       return "Принимаются только CSV-файлы.";
     case 413:
@@ -20,11 +28,4 @@ export function getAgentErrorText(error) {
     default:
       return "Не удалось получить ответ от нейросети.";
   }
-}
-
-// Данные файла бэкенд дописывает в системное сообщение; при повторной отправке того же файла убираем старый блок.
-export function stripDatasetBlock(context) {
-  if (context[0]?.role !== "system") return context;
-  const content = context[0].content.replace(/\n*<dataset>[\s\S]*?<\/dataset>/g, "");
-  return [{ ...context[0], content }, ...context.slice(1)];
 }

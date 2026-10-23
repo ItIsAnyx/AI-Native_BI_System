@@ -1,3 +1,13 @@
+/* Фон под страницами: во время перехода сквозь прозрачные слои виден именно он,
+   поэтому он должен совпадать с темой (иначе в тёмной теме мелькает светлый фон). */
+html[data-theme="dark"] {
+  background: #07060f;
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  background: #fafafc;
+}
+
 /* Анимация перехода между страницами входа/регистрации и рабочим пространством.
    Работает через View Transitions API (viewTransition в react-router). */
 ::view-transition-old(root),
@@ -14,7 +24,7 @@
 ::view-transition-new(root) {
   animation-name: page-in;
   animation-duration: 0.4s;
-  animation-delay: 0.2s;
+  animation-delay: 0.12s;
   animation-fill-mode: backwards;
 }
 @keyframes page-out {

@@ -5,7 +5,7 @@ const SPACING = 26;
 const FIELD_REACH = 24;
 
 // Цвет точек сетки и «облака» фона для каждой темы.
-const SCENES = {
+export const SCENES = {
   light: {
     dot: [79, 70, 229],
     blobs: [

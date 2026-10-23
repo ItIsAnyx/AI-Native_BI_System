@@ -1,15 +1,15 @@
 import { useEffect, useReducer, useRef } from "react";
-import { workspaceApi } from "../api/endpoints/workspaceApi";
+import { isCanceled, workspaceApi } from "../api/endpoints/workspaceApi";
+import { localWorkspaceApi } from "../api/endpoints/localWorkspaceApi";
 import {
   initialWorkspace,
   workspaceReducer,
 } from "../features/workspace/workspaceReducer";
-import {
-  getAgentErrorText,
-  stripDatasetBlock,
-} from "../features/workspace/agentErrors";
+import { getAgentErrorText } from "../features/workspace/agentErrors";
 
-export function useWorkspace() {
+// demo — режим /demo: без сервера и входа, все данные локальные.
+export function useWorkspace(demo = false) {
+  const api = demo ? localWorkspaceApi : workspaceApi;
   const [state, dispatch] = useReducer(workspaceReducer, initialWorkspace);
   const requests = useRef(new Map());
   const sending = useRef(false);
@@ -23,6 +23,23 @@ export function useWorkspace() {
     };
   }, []);
 
+  useEffect(() => {
+    if (demo) return undefined;
+    let cancelled = false;
+    dispatch({ type: "chats-loading" });
+    workspaceApi
+      .listChats()
+      .then((chats) => {
+        if (!cancelled) dispatch({ type: "chats-loaded", chats });
+      })
+      .catch(() => {
+        if (!cancelled) dispatch({ type: "chats-load-failed" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [demo]);
+
   async function createProject(name, chatId = null) {
     const normalized = name.trim().replace(/\s+/g, " ");
     if (!normalized) throw new Error("Введите название проекта.");
@@ -34,28 +51,29 @@ export function useWorkspace() {
       )
     )
       throw new Error("Проект с таким названием уже существует.");
-    const project = await workspaceApi.createProject({ name: normalized });
+    const project = await api.createProject({ name: normalized });
     dispatch({ type: "project-created", project });
     if (chatId) await moveChat(chatId, project.id);
     return project;
   }
   async function createChat(projectId = null) {
-    const chat = await workspaceApi.createChat({ projectId });
+    const chat = await api.createChat({ projectId });
     dispatch({ type: "chat-created", chat });
     return chat;
   }
   async function deleteChat(id) {
-    await workspaceApi.deleteChat(id);
+    const chat = state.chats.find((c) => c.id === id);
+    await api.deleteChat(id, { serverId: chat?.serverId ?? null });
     requests.current.get(id)?.abort();
     requests.current.delete(id);
     dispatch({ type: "chat-deleted", id });
   }
   async function moveChat(chatId, projectId) {
-    await workspaceApi.moveChat(chatId, projectId);
+    await api.moveChat(chatId, projectId);
     dispatch({ type: "chat-moved", chatId, projectId });
   }
   async function deleteProject(id, deleteChats) {
-    await workspaceApi.deleteProject(id, { deleteChats });
+    await api.deleteProject(id, { deleteChats });
     if (deleteChats)
       state.chats
         .filter((c) => c.projectId === id)
@@ -69,28 +87,20 @@ export function useWorkspace() {
     const chatId = chat.id;
     const controller = new AbortController();
     requests.current.set(chatId, controller);
-    // Файл отправляется заново с каждым сообщением, чтобы нейросеть могла вызывать инструменты по данным.
-    const file = message.files?.[0] ?? chat.file ?? null;
-    const context =
-      file && !message.files?.length
-        ? stripDatasetBlock(chat.context ?? [])
-        : (chat.context ?? []);
-    workspaceApi
+    api
       .sendMessage(
-        { text: message.text, files: file ? [file] : [], context },
+        {
+          text: message.text,
+          file: message.files?.find((f) => f instanceof File) ?? null,
+          serverId: chat.serverId ?? null,
+        },
         { signal: controller.signal },
       )
-      .then(({ message: reply, context: nextContext }) =>
-        dispatch({
-          type: "reply-received",
-          chatId,
-          message: reply,
-          context: nextContext,
-          file,
-        }),
+      .then(({ message: reply, serverId, sources }) =>
+        dispatch({ type: "reply-received", chatId, message: reply, serverId, sources }),
       )
       .catch((error) => {
-        if (error.name !== "AbortError" && error.name !== "CanceledError")
+        if (!isCanceled(error))
           dispatch({
             type: "reply-received",
             chatId,
@@ -107,8 +117,33 @@ export function useWorkspace() {
           requests.current.delete(chatId);
       });
   }
+  // Переписка чата с сервера подгружается при первом открытии.
+  function loadChat(chat) {
+    if (demo || !chat?.serverId || chat.loaded || chat.loading) return;
+    dispatch({ type: "chat-loading", id: chat.id });
+    workspaceApi
+      .loadChat(chat.serverId)
+      .then(({ messages, sources }) =>
+        dispatch({ type: "chat-loaded", id: chat.id, messages, sources }),
+      )
+      .catch(() => dispatch({ type: "chat-load-failed", id: chat.id }));
+  }
+  function selectChat(id) {
+    dispatch({ type: "chat-selected", id });
+    loadChat(state.chats.find((c) => c.id === id));
+  }
+  function reloadChats() {
+    if (demo) return;
+    dispatch({ type: "chats-loading" });
+    workspaceApi
+      .listChats()
+      .then((chats) => dispatch({ type: "chats-loaded", chats }))
+      .catch(() => dispatch({ type: "chats-load-failed" }));
+  }
   async function sendMessage(text, files = []) {
     const value = text.trim();
+    // Переписка с сервера ещё не загружена: отправка сейчас перепутала бы историю.
+    if (activeChat && (activeChat.loading || !activeChat.loaded)) return false;
     if (
       !value ||
       sending.current ||
@@ -152,7 +187,9 @@ export function useWorkspace() {
     deleteChat,
     deleteProject,
     moveChat,
-    selectChat: (id) => dispatch({ type: "chat-selected", id }),
+    selectChat,
+    loadChat: () => loadChat(activeChat),
+    reloadChats,
     toggleProject: (id) => dispatch({ type: "project-toggled", id }),
     sendMessage,
     retry,

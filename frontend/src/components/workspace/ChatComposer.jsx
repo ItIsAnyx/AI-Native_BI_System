@@ -49,6 +49,11 @@ export default function ChatComposer({ pending, onSend, notify }) {
   return (
     <div className="composer-wrap">
       <form className="composer" onSubmit={send}>
+        {["tl", "tr", "bl", "br"].map((corner) => (
+          <span key={corner} className={`corner-deco ${corner}`} aria-hidden="true">
+            ✻
+          </span>
+        ))}
         <div className="attachments">
           {files.map((file, index) => (
             <span key={`${file.name}-${index}`} className="att">
@@ -73,7 +78,7 @@ export default function ChatComposer({ pending, onSend, notify }) {
           rows={1}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Спросите Aster о плане, тексте или исследовании…"
+          placeholder="Спросите Aster о данных, отчётах или анализе…"
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&
@@ -101,9 +106,6 @@ export default function ChatComposer({ pending, onSend, notify }) {
             hidden
             onChange={attach}
           />
-          <span className="muted small kbd-hint">
-            Enter — отправить · Shift+Enter — новая строка
-          </span>
           <button
             type="submit"
             className="send-btn"

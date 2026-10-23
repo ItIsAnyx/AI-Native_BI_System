@@ -30,7 +30,7 @@ export default function Sidebar({
         aria-label="Боковая панель"
       >
         <div className="side-top">
-          <Brand />
+          <Brand sparkles />
           <button
             type="button"
             className="icon-btn only-mobile"

@@ -1,6 +1,7 @@
 import ChatThread from "./ChatThread";
 import ChatComposer from "./ChatComposer";
 import WorkspacePlaceholder from "./WorkspacePlaceholder";
+import SourcesPanel from "./SourcesPanel";
 
 export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
   return (
@@ -16,10 +17,14 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
           chat={workspace.activeChat}
           onSend={onSend}
           onRetry={workspace.retry}
+          onReload={workspace.loadChat}
         />
         <ChatComposer
           key={workspace.activeId ?? "empty"}
-          pending={workspace.activeChat?.pending ?? false}
+          pending={
+            (workspace.activeChat?.pending || workspace.activeChat?.loading) ??
+            false
+          }
           onSend={onSend}
           notify={notify}
         />
@@ -42,10 +47,7 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
         className="panel"
         hidden={tab !== "data"}
       >
-        <WorkspacePlaceholder icon="db" title="Data sources">
-          Раздел появится позже. Здесь можно будет подключать документы и
-          сервисы.
-        </WorkspacePlaceholder>
+        <SourcesPanel chat={workspace.activeChat} />
       </section>
     </div>
   );

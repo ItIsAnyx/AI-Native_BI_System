@@ -1,4 +1,5 @@
 import Icon from "../common/Icon";
+import ThemeToggle from "../auth/ThemeToggle";
 
 export default function WorkspaceHeader({
   title,
@@ -6,6 +7,8 @@ export default function WorkspaceHeader({
   demo,
   drawer,
   onOpenMenu,
+  theme,
+  onToggleTheme,
 }) {
   return (
     <header className="topbar">
@@ -26,6 +29,7 @@ export default function WorkspaceHeader({
           {demo && " · Демо"}
         </p>
       </div>
+      <ThemeToggle theme={theme} onToggle={onToggleTheme} />
     </header>
   );
 }

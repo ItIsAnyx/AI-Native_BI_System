@@ -1,5 +1,10 @@
+import { lazy, Suspense } from "react";
 import Icon from "../common/Icon";
-import Markdown from "./Markdown";
+import { assetUrl } from "../../api/endpoints/workspaceApi";
+import AiAvatar from "./AiAvatar";
+
+// Библиотека разметки (react-markdown) подгружается отдельным файлом, когда нужен первый ответ ассистента.
+const Markdown = lazy(() => import("./Markdown"));
 
 const suggestions = [
   "Составить подробный чек-лист",
@@ -46,15 +51,13 @@ export default function ChatMessage({
     );
   return (
     <div className="msg-ai">
-      <span className="logo">
-        <Icon name="spark" />
-      </span>
+      <AiAvatar />
       <div className="ai-body">
         {message.error ? (
           <div className="err-box">
             <p>
               <Icon name="alert" />
-              Не удалось получить ответ. Повторите попытку.
+              {message.errorText ?? "Не удалось получить ответ. Повторите попытку."}
             </p>
             {canRetry && (
               <button
@@ -69,7 +72,27 @@ export default function ChatMessage({
             )}
           </div>
         ) : message.source !== "demo" ? (
-          <Markdown>{message.text}</Markdown>
+          <>
+            <Suspense fallback={<p className="assistant-text">{message.text}</p>}>
+              <Markdown>{message.text}</Markdown>
+            </Suspense>
+            {message.charts?.map((chart) => (
+              <figure className="chart" key={chart.id}>
+                <a href={assetUrl(chart.url)} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={assetUrl(chart.url)}
+                    alt={`График: ${chart.y_column} по ${chart.x_column}`}
+                    loading="lazy"
+                  />
+                </a>
+                {chart.truncated && (
+                  <figcaption>
+                    Показано {chart.plotted_points} из {chart.available_points} точек.
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </>
         ) : (
           <>
             <h3>Предлагаемый план действий</h3>

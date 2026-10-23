@@ -1,73 +1,110 @@
-# Aster — React frontend
+# Aster — React-фронтенд
 
-React frontend for Aster. Source code is organized by responsibility; see the structure below.
+Фронтенд ассистента Aster: вход и регистрация, рабочее пространство с чатами,
+ответами нейросети (Markdown, графики), файлами и светлой/тёмной темой.
 
-## Run
+## Запуск
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open http://localhost:5174. The dev proxy forwards `/api` to
-http://localhost:8080. Start the existing backend separately with its configured
-PostgreSQL database. To use another API origin, set `VITE_API_URL` before starting
-Vite. For production builds the variable must be available at build time.
+Откройте http://localhost:5174. Dev-сервер Vite перенаправляет на бэкенд
+(http://localhost:8080) запросы `/api` (авторизация) и `/agent` (чаты и нейросеть),
+поэтому настраивать адрес API и CORS в разработке не нужно. Бэкенд, база данных и
+Ollama запускаются отдельно (см. корневой README и `docker-compose.yaml`).
+
+Другой адрес API задаётся переменной `VITE_API_URL` (см. `.env.example`); для
+production-сборки она должна быть известна на этапе сборки.
 
 ```sh
-npm run build
+npm run build   # сборка в dist/
 npm run lint
 ```
 
-## Authentication
+## Авторизация
 
-Login, registration, `/me`, token refresh and logout use the existing backend
-endpoints and HttpOnly cookies through `publicApi` and `privateApi`.
-The auth store contains only the user, initialization flag and basic actions.
-`/` is protected; `/login` and `/register` are public. `/demo` is a separate local
-preview and never marks a visitor as authenticated. Password recovery is not
-implemented by the backend and the UI says so.
+Вход, регистрация, `/me`, обновление токена и выход используют эндпоинты бэкенда и
+HttpOnly-куки через `publicApi` и `privateApi`. Хранилище авторизации содержит только
+пользователя, флаг инициализации и базовые действия. Маршрут `/` защищён,
+`/login` и `/register` открыты. `/demo` — локальный предпросмотр без сервера: он
+никогда не считает посетителя авторизованным. Восстановление пароля бэкендом пока
+не реализовано, и интерфейс об этом сообщает.
+
+Страницы входа и регистрации, как и рабочее пространство, поддерживают светлую и
+тёмную темы. Выбор темы хранится в `localStorage` (`aster-theme`), пока пользователь
+его не сделал, тема следует за системной. Тема дублируется на `<html>` (скрипт в
+`index.html` ставит её до первой отрисовки), иначе при переходах между страницами
+мелькал бы светлый фон.
+
+## Что работает с бэкендом, а что пока локально
+
+| Возможность | Источник |
+| --- | --- |
+| Список чатов, история, вложения, графики | бэкенд (`/agent/chats…`) |
+| Ответы нейросети, загрузка CSV | бэкенд (`POST /agent/response`) |
+| Скачивание CSV, картинки графиков | бэкенд (`/agent/sources/…`, `/agent/artifacts/…`) |
+| Удаление чата | бэкенд: ждёт `DELETE /agent/chats/{id}` (пока ответ 404/405 → понятная ошибка) |
+| Проекты, перенос чатов в проект | только в браузере (на бэкенде их нет) |
+| Режим `/demo` | полностью локально, нейросеть не вызывается |
+| Dashboard | заглушка |
+
+Новый чат создаётся в браузере и появляется на сервере вместе с первым сообщением
+(бэкенд сам выдаёт `chat_id`). Историю диалога хранит бэкенд; фронтенд присылает только
+`chat_id` и текст. К сообщению можно прикрепить один CSV-файл: он сохраняется на сервере
+и остаётся источником данных чата (вкладка Data sources).
+
+Ответы ассистента выводятся как Markdown (`react-markdown` + GFM: таблицы, списки,
+код, чекбоксы). Сырой HTML не исполняется. Картинки показываются только с нашего
+сервера (`/agent/artifacts/…`): внешние адреса блокируются, чтобы текст из CSV не мог
+заставить браузер отправить данные на чужой сайт. Библиотека Markdown загружается
+отдельным файлом при первом ответе.
 
 ## Структура приложения
 
 ```text
 src/
   pages/                    Страницы маршрутов и сборка интерфейса
-  layouts/                  Общие оболочки страниц
+  layouts/                  Общие оболочки страниц (вход/регистрация)
   components/
-    common/                 Бренд и иконки
+    auth/                   Переключатель темы
+    common/                 Бренд, иконки, переходы между страницами
     ui/                     Кнопка, поле, модальное окно, уведомление
     workspace/
       sidebar/              Навигация, проект со списком чатов, аккаунт
       dialogs/              Создание/удаление проекта, удаление/перенос чата
       Sidebar.jsx           Оболочка боковой панели и поиск
-      WorkspaceHeader.jsx   Заголовок и открытие мобильного меню
+      WorkspaceHeader.jsx   Заголовок, тема, открытие мобильного меню
       WorkspaceTabs.jsx     Переключение вкладок с клавиатуры
       WorkspacePanels.jsx   Содержимое вкладок
-      Chat*.jsx             Переписка, сообщение и ввод сообщения
+      SourcesPanel.jsx      Файлы текущего чата (вкладка Data sources)
+      Chat*.jsx             Переписка, сообщение, ввод; AiAvatar — логотип ассистента
+      Markdown.jsx          Вывод Markdown (подгружается лениво)
   hooks/                    Логика React и жизненный цикл
   features/
     auth/                   Валидация форм, ошибки API, безопасный возврат
-    workspace/              Reducer состояния проектов и чатов
+    workspace/              Reducer состояния чатов, тексты ошибок нейросети
   api/                      HTTP-клиенты и методы API
+    endpoints/              authApi, workspaceApi (сервер), localWorkspaceApi (локально)
   store/                    Общее состояние авторизации
   types/                    Типы авторизации
-  styles/                   Базовые стили и стили разделов
+  styles/                   base, auth, workspace, workspace-aster (тема чатов), transitions
 ```
 
-`App.jsx` задаёт маршруты и инициализацию авторизации. Страницы собирают
-компоненты и связывают их действия. Компоненты не обращаются к HTTP напрямую:
-`useWorkspace` управляет действиями и отменой запросов, `workspaceReducer` —
-изменением данных, `workspaceApi` — доступом к данным.
+`App.jsx` задаёт маршруты и инициализацию авторизации. Компоненты не обращаются к HTTP
+напрямую: `useWorkspace` управляет действиями и отменой запросов, `workspaceReducer`
+меняет данные, `workspaceApi` ходит на сервер. Для `/demo` вместо него используется
+`localWorkspaceApi`.
 
-`WorkspaceDialogs` только выбирает диалог. Каждый диалог хранит собственные
-поля, а `useDialogAction` обрабатывает ожидание, ошибки и успешное закрытие.
-`useDrawerFocus` отвечает за клавиатуру и возврат фокуса мобильного меню,
-`useToast` — за время показа уведомлений.
+Диалоги выбирает `WorkspaceDialogs`; каждый хранит свои поля, а `useDialogAction`
+обрабатывает ожидание и ошибки. `useDrawerFocus` отвечает за клавиатуру мобильного
+меню, `useToast` — за уведомления. Вход и регистрация используют общий `useAuthForm`.
 
-Вход и регистрация используют общий `useAuthForm`. Правила полей находятся
-в `features/auth/loginForm.js` и `registerForm.js`; разбор серверных ошибок
-и проверка адреса возврата также вынесены в отдельные функции.
+Оформление: `styles/auth.css` — страницы входа (`.login`), `styles/workspace-aster.css` —
+тема чатов (палитры, стеклянные панели, декор из точек; тема через `data-theme` на
+`.app`). Фон-облака рисуют `useAuthScene` и `useBlobsBackground`. Переходы между
+страницами — View Transitions (`useTransitionNavigate`, `styles/transitions.css`).
 
 Где менять код:
 
@@ -76,32 +113,26 @@ src/
 - Новый диалог: `components/workspace/dialogs/` и `WorkspaceDialogs`.
 - Поведение чатов: `useWorkspace` и `workspaceReducer`.
 - Подключение сервера: `api/endpoints/`, без изменений компонентов.
+- Цвета и декор чатов: `styles/workspace-aster.css`.
 
-## Connecting additional backend endpoints
+## Подключение новых эндпоинтов бэкенда
 
-`src/api/endpoints/workspaceApi.js` is the replacement boundary for workspace
-operations. The current implementation is local and asynchronous. Projects and
-chats live in React state and reset on reload; replies are explicitly marked as
-sample responses. Dashboard and Data sources remain the original placeholders.
+Граница замены — `src/api/endpoints/workspaceApi.js`. Что осталось локальным, лежит в
+`localWorkspaceApi.js` (проекты, перенос чатов, демо). Когда на бэкенде появятся
+проекты, замените соответствующие методы вызовами `privateApi`, сохранив контракты:
 
-Replace method bodies with `privateApi` calls while keeping these contracts:
-
-| Method | Input | Result |
+| Метод | Вход | Результат |
 | --- | --- | --- |
 | createProject | `{ name }` | `{ id, name, open }` |
-| deleteProject | `projectId, { deleteChats }` | completion |
-| createChat | `{ projectId }` | `{ id, projectId, title, messages, pending }` |
-| deleteChat | `chatId` | completion |
-| moveChat | `chatId, projectId` | completion |
-| sendMessage | `{ chatId, text, files }`, `{ signal, retry }` | assistant message |
+| deleteProject | `projectId, { deleteChats }` | завершение |
+| moveChat | `chatId, projectId` | завершение |
+| deleteChat | `chatId, { serverId }` | завершение (уже вызывает `DELETE /agent/chats/{id}`) |
+| listChats / loadChat | — / `serverId` | чаты / `{ messages, sources }` |
+| sendMessage | `{ text, file, serverId }`, `{ signal }` | `{ message, serverId, sources }` |
 
-IDs are strings. The composer passes actual `File` objects (up to five) to the
-workspace API boundary; it does not currently upload or parse them. Use
-`FormData` or a separate upload endpoint when the backend supports attachments.
-Pass `signal` through to Axios for cancellation when a chat is removed or the
-workspace unmounts. Return `{ id, role: "assistant", text }` for real replies; `ChatMessage` already
-renders their text. Only messages with `source: "demo"` use the sample block. A backend list endpoint will
-also need to populate initial workspace state for persistent history.
+Идентификаторы — строки. Чат в браузере имеет локальный `id` и `serverId` (пока чата нет
+на сервере, он `null`). Передавайте `signal` в Axios, чтобы запрос отменялся при удалении
+чата или закрытии страницы.
 
 ## Docker
 
@@ -110,5 +141,7 @@ docker build -t aster-frontend --build-arg VITE_API_URL=http://localhost:8080 .
 docker run --rm -p 3000:3000 aster-frontend
 ```
 
-Use a browser-reachable API origin and configure the backend CORS origin to
-match the frontend address. The container serves `dist` with SPA fallback.
+В контейнере прокси Vite нет: браузер обращается к API напрямую по `VITE_API_URL`,
+поэтому адрес должен быть доступен из браузера, а в `backend/.env` нужно поставить
+`FRONTEND_URL=http://localhost:3000` (адрес, с которого открыта страница), иначе запросы
+заблокирует CORS. Контейнер отдаёт `dist` с переходом на `index.html` для маршрутов SPA.
