@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTransitionNavigate } from "../hooks/useTransitionNavigate";
 import { useAuth } from "../hooks/useAuth";
 import { useWorkspace } from "../hooks/useWorkspace";
+import { useTheme } from "../hooks/useTheme";
+import { useBlobsBackground } from "../hooks/useBlobsBackground";
 import { useToast } from "../hooks/useToast";
 import Toast from "../components/ui/Toast";
 import WorkspaceHeader from "../components/workspace/WorkspaceHeader";
@@ -16,6 +18,9 @@ export default function Workspace({ demo = false }) {
   const { user, logout } = useAuth();
   const navigate = useTransitionNavigate();
   const workspace = useWorkspace(demo);
+  const { theme, toggleTheme } = useTheme();
+  const blobs = useRef(null);
+  useBlobsBackground(blobs, theme);
   const [query, setQuery] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [tab, setTab] = useState("chat");
@@ -71,7 +76,8 @@ export default function Workspace({ demo = false }) {
     }
   }
   return (
-    <div className="app">
+    <div className="app" data-theme={theme}>
+      <canvas className="bg-blobs" ref={blobs} aria-hidden="true" />
       <Sidebar
         workspace={workspace}
         user={demo ? demoUser : user}
@@ -99,6 +105,8 @@ export default function Workspace({ demo = false }) {
           demo={demo}
           drawer={drawer}
           onOpenMenu={() => setDrawer(true)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
         <WorkspaceTabs value={tab} onChange={setTab} />
         <WorkspacePanels

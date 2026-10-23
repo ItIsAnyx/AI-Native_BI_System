@@ -62,6 +62,11 @@ export default function SidebarNavigation({
           <p className="side-empty">Проектов пока нет.</p>
         )}
       </section>
+      <div className="side-divider" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
       <section>
         <h2 className="side-h">Недавние</h2>
         <ul className="list">{recent.map(row)}</ul>

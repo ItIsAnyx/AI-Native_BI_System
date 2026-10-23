@@ -118,7 +118,6 @@
 .composer textarea{display:block;width:100%;border:0;outline:0;resize:none;background:transparent;max-height:200px;line-height:1.55;padding:2px 0}
 .composer textarea::placeholder{color:#8B8798}
 .composer-row{display:flex;align-items:center;gap:8px;margin-top:4px}
-.kbd-hint{flex:1;text-align:right}
 .send-btn{width:40px;height:40px;border:0;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;transition:background .15s}
 .send-btn:hover:not([disabled]){background:var(--accent-h)}
 .send-btn[disabled]{background:#CFCBE8;cursor:not-allowed}
@@ -149,8 +148,6 @@
   .tabs{padding:0 12px}
   .thread{padding:20px 16px}
   .composer-wrap{padding:8px 12px 12px}
-  .kbd-hint{display:none}
-  .composer-row .send-btn{margin-left:auto}
 }
 @media (max-width:480px){
   .login-card{padding:28px 20px}

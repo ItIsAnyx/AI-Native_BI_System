@@ -1,6 +1,10 @@
+import { lazy, Suspense } from "react";
 import Icon from "../common/Icon";
 import { assetUrl } from "../../api/endpoints/workspaceApi";
-import Markdown from "./Markdown";
+import AiAvatar from "./AiAvatar";
+
+// Библиотека разметки (react-markdown) подгружается отдельным файлом, когда нужен первый ответ ассистента.
+const Markdown = lazy(() => import("./Markdown"));
 
 const suggestions = [
   "Составить подробный чек-лист",
@@ -47,9 +51,7 @@ export default function ChatMessage({
     );
   return (
     <div className="msg-ai">
-      <span className="logo">
-        <Icon name="spark" />
-      </span>
+      <AiAvatar />
       <div className="ai-body">
         {message.error ? (
           <div className="err-box">
@@ -71,7 +73,9 @@ export default function ChatMessage({
           </div>
         ) : message.source !== "demo" ? (
           <>
-            <Markdown>{message.text}</Markdown>
+            <Suspense fallback={<p className="assistant-text">{message.text}</p>}>
+              <Markdown>{message.text}</Markdown>
+            </Suspense>
             {message.charts?.map((chart) => (
               <figure className="chart" key={chart.id}>
                 <a href={assetUrl(chart.url)} target="_blank" rel="noopener noreferrer">
