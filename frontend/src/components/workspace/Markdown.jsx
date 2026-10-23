@@ -1,5 +1,17 @@
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
+import { normalizeMath } from "../../features/workspace/normalizeMath";
+
+// Формулы LaTeX: $$…$$ (блок или в строке). Одиночные $ отключены, чтобы суммы вроде «$5 и $10» не считались формулой;
+// \(…\), \[…\] и осторожные $…$ приводит к $$ функция normalizeMath.
+const remarkPlugins = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+// KaTeX не бросает ошибку на неверной формуле, а показывает её исходный текст (красным).
+const rehypePlugins = [
+  [rehypeKatex, { throwOnError: false, strict: "ignore", maxExpand: 1000, maxSize: 20 }],
+];
 
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
@@ -42,8 +54,12 @@ const components = {
 export default function Markdown({ children }) {
   return (
     <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={components}
+      >
+        {normalizeMath(children)}
       </ReactMarkdown>
     </div>
   );
