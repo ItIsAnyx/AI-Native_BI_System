@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi import HTTPException
 from app.config import settings
 from app.services import chat_storage
+from app.data.processed_dataset import metadata_path, read_processed_dataset
 
 from app.tools.column_values import get_column_values as get_column_values
 from app.tools.rows import get_rows as get_rows
@@ -153,5 +154,8 @@ def load_source(sources: list[dict], source_id: str | None):
     source = next((source for source in sources if source["id"] == source_id), None)
     if source is None:
         raise ValueError("Select an available CSV source using source_id")
-    with chat_storage.existing_file(source["file_path"]).open("rb") as file:
+    path = chat_storage.existing_file(source["file_path"])
+    if metadata_path(path).is_file():
+        return read_processed_dataset(path)
+    with path.open("rb") as file:
         return read_dataset(file)

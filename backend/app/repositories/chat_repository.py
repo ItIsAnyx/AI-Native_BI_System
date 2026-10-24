@@ -77,6 +77,7 @@ def save_chat_state(
     chat_id: UUID, user_id: UUID, version: int,
     chat_history: list[dict], active_context: list[dict], active_source_id: str | None,
     new_source: dict | None = None, artifacts: list[dict] | None = None,
+    new_sources: list[dict] | None = None,
 ) -> None:
     with SessionLocal() as db:
         result = db.execute(update(ChatHistory).where(
@@ -90,6 +91,8 @@ def save_chat_state(
             raise HTTPException(status_code=409, detail="Chat changed during this request. Reload it and retry")
         if new_source:
             db.add(Source(chat_id=chat_id, **new_source))
+        for source in new_sources or []:
+            db.add(Source(chat_id=chat_id, **source))
         for artifact in artifacts or []:
             db.add(Artifact(chat_id=chat_id, **artifact))
         db.commit()

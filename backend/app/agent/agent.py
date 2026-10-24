@@ -1,4 +1,6 @@
 import json
+import re
+from uuid import uuid4
 
 from fastapi import HTTPException
 from openai import APIError, AsyncOpenAI
@@ -6,9 +8,13 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.agent.prompts import summary_prompt
+from app.agent.tool_results import has_tool_markup, render_tool_results
+from app.agent.operation_review import review_tool_call
 from app.agent.token_counter import count_tokens
 from app.tools.dataset import list_sources, load_source
-from app.tools.tools import tools, TOOL_FUNCTIONS
+from app.tools.joins import join_source_ids
+from app.tools.errors import DataSelectionError
+from app.tools.tools import tools, TOOL_FUNCTIONS, TRANSFORM_TOOLS
 
 
 CONTEXT_LIMIT_MESSAGE = (
@@ -38,7 +44,7 @@ async def request_model(
         model=settings.MODEL_NAME, messages=messages,
         tools=tools if use_tools else [],
         tool_choice="auto" if use_tools else "none",
-        temperature=0.6, max_tokens=settings.MAX_RESPONSE_TOKENS,
+        temperature=0, max_tokens=settings.MAX_RESPONSE_TOKENS,
     )
 
 
@@ -127,6 +133,8 @@ async def call_llm(
     chart_artifacts: list[dict] | None = None,
     sources: list[dict] | None = None,
     active_source_id: str | None = None,
+    processed_sources: list[dict] | None = None,
+    user_request: str | None = None,
 ) -> str:
 
     working_messages = [dict(message) for message in messages]
@@ -134,12 +142,22 @@ async def call_llm(
     dataframes = {}
     if df is not None:
         dataframes[active_source_id] = df
+    last_question = user_request if user_request is not None else next(
+        (message["content"] for message in reversed(messages) if message["role"] == "user"), "")
+    russian = bool(re.search(r"[А-Яа-яЁё]", last_question))
+    executions = []
+    repaired_draft = False
+    selection_error = None
+    operation_reviews = {}
     if use_tools:
         availability_note = (
             "\n\n<source_metadata>\n"
             + json.dumps({
                 "sources": list_sources(sources),
                 "active_source_id": active_source_id,
+                "active_schema": {"total_rows": len(df), "columns": {name: str(dtype) for name, dtype in df.dtypes.items()},
+                                  "key_columns": df.attrs.get("key_columns", []),
+                                  "technical_id_column": df.attrs.get("technical_id_column")} if df is not None else None,
             }, ensure_ascii=False)
             + "\n</source_metadata>"
         )
@@ -158,6 +176,9 @@ async def call_llm(
         try:
             out = await request_model(client, working_messages, tools_enabled)
         except ContextLimitError:
+            grounded = render_tool_results(executions, russian)
+            if grounded:
+                return grounded + "\n\n" + CONTEXT_LIMIT_MESSAGE
             return await answer_context_limit(client, working_messages)
         if not out.choices:
             raise HTTPException(status_code=502, detail="Model returned no results")
@@ -165,12 +186,42 @@ async def call_llm(
         message = out.choices[0].message
         if not message.tool_calls:
             answer = message.content or ""
+            if not repaired_draft and tools_enabled and has_tool_markup(answer):
+                repaired_draft = True
+                working_messages.extend([
+                    {"role": "assistant", "content": answer},
+                    {"role": "system", "content": "The preceding XML did not execute a tool. If the user requested an operation, use a native tool call. "
+                     "Do not print XML or JSON instead of executing it. If the operation is invalid, explain why and ask for clarification."},
+                ])
+                continue
+            grounded = render_tool_results(executions, russian)
+            if grounded is not None and out.choices[0].finish_reason in ("stop", "length"):
+                if has_tool_markup(answer):
+                    grounded += ("\n\nСледующий вызов не выполнен. Не все запрошенные операции завершены."
+                                 if russian else "\n\nThe next call was not executed. Some requested operations remain incomplete.")
+                return grounded
             if out.choices[0].finish_reason == "length":
                 return await continue_answer(client, working_messages, answer)
             if out.choices[0].finish_reason != "stop":
                 raise HTTPException(status_code=502, detail="Model stopped without completing its answer")
             if not answer.strip():
                 raise HTTPException(status_code=502, detail="Model returned an empty answer")
+            if has_tool_markup(answer):
+                return ("Не удалось выполнить корректный вызов инструмента. Повторите запрос или уточните параметры."
+                        if russian else "Could not execute a valid tool call. Retry or clarify the parameters.")
+            if use_tools and sources and not executions:
+                mismatch = await review_tool_call(client, last_question, "unexecuted_answer", {"answer": answer}, sources, active_source_id)
+                if mismatch:
+                    if tools_enabled and not repaired_draft:
+                        repaired_draft = True
+                        working_messages.extend([
+                            {"role": "assistant", "content": answer},
+                            {"role": "system", "content": "No tools executed in this request. " + mismatch
+                             + " Use a native call for an actually requested operation, or explain why it cannot be performed."},
+                        ])
+                        continue
+                    return ("В этом запросе обработка данных не выполнялась. Уточните параметры или повторите запрос."
+                            if russian else "No data operation was executed in this request. Clarify the parameters or retry.")
             return answer
 
         if not tools_enabled:
@@ -197,6 +248,7 @@ async def call_llm(
         token_count = await run_in_threadpool(count_tokens, working_messages, tools)
         context_exceeded = token_count > settings.MAX_CONTEXT_TOKENS - settings.MAX_RESPONSE_TOKENS
         for tool_call in message.tool_calls:
+            executed_arguments = {}
             if context_exceeded:
                 result = {"error": "Context token limit reached. Tool execution stopped."}
             elif tool_calls_used >= max_tool_calls:
@@ -216,15 +268,56 @@ async def call_llm(
                     args = json.loads(tool_call.function.arguments)
                     if not isinstance(args, dict):
                         raise ValueError("Tool arguments must be a JSON object")
+                    executed_arguments = dict(args)
+                    if selection_error and name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period"}:
+                        raise DataSelectionError("Требуется уточнение после ошибки выбора данных: " + selection_error)
+                    if name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period"}:
+                        review_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False), active_source_id,
+                                      tuple(source["id"] for source in sources))
+                        if review_key not in operation_reviews:
+                            operation_reviews[review_key] = await review_tool_call(
+                                client, last_question, name, args, sources, active_source_id)
+                        mismatch = operation_reviews[review_key]
+                        if mismatch:
+                            raise ValueError(mismatch)
 
                     function = TOOL_FUNCTIONS[name]
                     if name == "list_sources":
                         result = await run_in_threadpool(function, sources=sources, **args)
+                    elif name == "join_tables":
+                        source_ids = join_source_ids(args.get("source_id"), args.get("joins"))
+                        available_ids = {source["id"] for source in sources}
+                        if any(source_id not in available_ids for source_id in source_ids):
+                            raise ValueError("Выберите доступные CSV-источники текущего чата через list_sources")
+                        for source_id in source_ids:
+                            if source_id not in dataframes:
+                                dataframes[source_id] = await run_in_threadpool(load_source, sources, source_id)
+                        selected = {source_id: dataframes[source_id] for source_id in source_ids}
+                        result = await run_in_threadpool(function, dataframes=selected, **args)
                     else:
                         source_id = args.pop("source_id", None) or active_source_id
+                        if name in TRANSFORM_TOOLS:
+                            if processed_sources is None:
+                                raise ValueError("Сохранение обработанных источников не настроено")
+                            if not any(source["id"] == source_id for source in sources):
+                                raise ValueError("Выберите доступный CSV-источник текущего чата через list_sources")
                         if source_id not in dataframes:
                             dataframes[source_id] = await run_in_threadpool(load_source, sources, source_id)
                         result = await run_in_threadpool(function, df=dataframes[source_id], **args)
+                        if name in TRANSFORM_TOOLS:
+                            processed_df = result.pop("_dataframe")
+                            parent = next(source for source in sources if source["id"] == source_id)
+                            new_id = str(uuid4())
+                            derived = {
+                                "id": new_id, "name": parent["name"].rsplit(".", 1)[0][:180] + f"_{name}.csv",
+                                "description": f"{name}; исходный источник: {source_id}", "type": "csv",
+                            }
+                            dataframes[new_id] = processed_df
+                            sources.append(derived)
+                            processed_sources.append({"source": derived, "dataframe": processed_df})
+                            result["parent_source_id"] = source_id
+                            result["active_source_id"] = new_id
+                            active_source_id = source_id = new_id
                         if source_id:
                             result["source_id"] = source_id
                     if name == "build_chart":
@@ -233,6 +326,9 @@ async def call_llm(
                         # Image bytes never enter the model context or chat history.
                         result = {key: value for key, value in result.items() if key != "image_base64"}
 
+                except DataSelectionError as exc:
+                    selection_error = selection_error or str(exc)
+                    result = {"error": str(exc)}
                 except (ValueError, TypeError) as exc:
                     result = {"error": str(exc)}
                 except HTTPException as exc:
@@ -241,6 +337,8 @@ async def call_llm(
                     result = {"error": str(exc.detail)}
                 except OSError:
                     result = {"error": "Cannot read the saved CSV source."}
+
+            executions.append({"name": tool_call.function.name, "arguments": executed_arguments, "result": result})
 
             tool_message = {
                 "role": "tool",
@@ -256,6 +354,9 @@ async def call_llm(
                     })
             working_messages.append(tool_message)
         if context_exceeded:
+            grounded = render_tool_results(executions, russian)
+            if grounded:
+                return grounded + "\n\n" + CONTEXT_LIMIT_MESSAGE
             return await answer_context_limit(client, working_messages)
 
 

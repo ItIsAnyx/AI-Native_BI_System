@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from app.config import settings
+from app.data.processed_dataset import metadata_path, write_processed_dataset
 
 
 def storage_path(relative_path: str) -> Path:
@@ -50,8 +51,19 @@ def save_png(encoded: str, chat_id: UUID, artifact_id: UUID) -> str:
     return relative_path
 
 
+def save_processed_csv(df, chat_id: UUID, source_id: UUID) -> str:
+    relative_path = f"sources/{chat_id}/{source_id}.csv"
+    path = storage_path(relative_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_processed_dataset(df, path)
+    return relative_path
+
+
 def remove_file(relative_path: str) -> None:
-    storage_path(relative_path).unlink(missing_ok=True)
+    path = storage_path(relative_path)
+    path.unlink(missing_ok=True)
+    if path.suffix == ".csv":
+        metadata_path(path).unlink(missing_ok=True)
 
 
 def existing_file(relative_path: str) -> Path:
