@@ -4,7 +4,7 @@ import json
 import re
 
 
-TABLE_TOOLS = {"group_dataset", "clean_missing_values", "drop_columns", "drop_duplicates",
+TABLE_TOOLS = {"get_date_range", "group_by_time", "group_dataset", "clean_missing_values", "drop_columns", "drop_duplicates",
                "filter_rows", "find_anomalies", "find_duplicates", "get_rows_by_period", "join_tables",
                "read_dataset_and_gain_statistics"}
 
@@ -48,12 +48,25 @@ def render_tool_results(executions, russian=True):
     operations = [item for item in successful if item["name"] != "read_dataset_and_gain_statistics"]
     for item in operations:
         name, result = item["name"], item["result"]
-        if name == "group_dataset":
+        if name == "get_date_range":
+            lines += [tr("Диапазон дат: ", "Date range: ") + _cell(result["start_date"]) + " — " + _cell(result["end_date"])
+                      + f" ({_cell(result['timezone'])}).",
+                      tr("Строк проверено: ", "Checked rows: ") + str(result["total_rows"]) + "; "
+                      + tr("валидных дат: ", "valid dates: ") + str(result["valid_count"]) + "; "
+                      + tr("различных дней: ", "distinct days: ") + str(result["distinct_days"]) + ".",
+                      tr("Пропущенных дат: ", "Missing dates: ") + str(result["missing_count"]) + "; "
+                      + tr("неверных дат: ", "invalid dates: ") + str(result["invalid_count"]) + ".", ""]
+        elif name in {"group_dataset", "group_by_time"}:
             lines += [tr("Группировка", "Grouping") + f": {_cell(result['group_by'])}.",
                       tr("Групп: ", "Groups: ") + str(result["group_count"]) + "; "
                       + tr("строк учтено: ", "included rows: ") + str(result["included_rows"]) + "; "
                       + tr("исключено: ", "excluded: ") + str(result["excluded_rows"]) + ".",
                       tr("Агрегаты: ", "Aggregations: ") + _cell(result["aggregations"]), ""]
+            if name == "group_by_time":
+                lines += [tr("Календарная частота: ", "Calendar frequency: ") + _cell(result["frequency"])
+                          + f" ({_cell(result['timezone'])}).",
+                          tr("Пропущенных дат: ", "Missing dates: ") + str(result["missing_count"]) + "; "
+                          + tr("неверных дат: ", "invalid dates: ") + str(result["invalid_count"]) + ".", ""]
         elif name in {"clean_missing_values", "drop_columns", "drop_duplicates", "filter_rows"}:
             lines += [f"{name}: {result['input_rows']} → {result['total_rows']}; "
                       + tr("удалено строк: ", "removed rows: ") + str(result["removed_rows"]) + "."]
@@ -100,7 +113,8 @@ def render_tool_results(executions, russian=True):
             if result.get("truncated"):
                 lines += [tr("Показаны только первые ", "Showing only the first ") + str(result["returned_count"])
                           + tr(" строк; полный результат больше.", " rows; the full result is larger."), ""]
-        lines += [*_table(rows)] if rows else [tr("Нет строк для отображения.", "No rows to display.")]
+        if last["name"] != "get_date_range":
+            lines += [*_table(rows)] if rows else [tr("Нет строк для отображения.", "No rows to display.")]
         if result.get("source_id"):
             lines += ["", tr("Источник: ", "Source: ") + _cell(result["source_id"])]
     warnings = list(dict.fromkeys(str(warning) for item in successful for key in ("warnings", "source_warnings")

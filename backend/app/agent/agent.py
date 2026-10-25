@@ -149,6 +149,7 @@ async def call_llm(
     repaired_draft = False
     selection_error = None
     operation_reviews = {}
+    workflow_checks = 0
     if use_tools:
         availability_note = (
             "\n\n<source_metadata>\n"
@@ -195,6 +196,29 @@ async def call_llm(
                 ])
                 continue
             grounded = render_tool_results(executions, russian)
+            workflow_executed = any(item["name"] in {"group_by_time", "build_dashboard", "build_chart"}
+                                    and "error" not in item["result"] for item in executions)
+            if workflow_executed and not selection_error and out.choices[0].finish_reason in ("stop", "length"):
+                completed = [{
+                    "name": item["name"], "arguments": item["arguments"],
+                    "result": {key: value for key, value in item["result"].items() if key in {
+                        "error", "source_id", "parent_source_id", "frequency", "total_rows", "chart_type", "panels"}},
+                } for item in executions if isinstance(item["result"], dict)]
+                mismatch = await review_tool_call(client, last_question, "completed_workflow",
+                                                 {"executions": completed}, sources, active_source_id)
+                workflow_checks += 1
+                if mismatch:
+                    if tools_enabled and workflow_checks == 1:
+                        working_messages.extend([
+                            {"role": "assistant", "content": answer},
+                            {"role": "system", "content": "The requested workflow is incomplete. " + mismatch
+                             + " Execute only the missing requested steps with native tools on the correct source. "
+                             "Do not repeat completed transformations or claim that unexecuted steps finished."},
+                        ])
+                        continue
+                    notice = ("Не все запрошенные операции завершены. " if russian
+                              else "Some requested operations remain incomplete. ") + mismatch
+                    return (grounded + "\n\n" if grounded else "") + notice
             if grounded is not None and out.choices[0].finish_reason in ("stop", "length"):
                 if has_tool_markup(answer):
                     grounded += ("\n\nСледующий вызов не выполнен. Не все запрошенные операции завершены."
@@ -269,9 +293,9 @@ async def call_llm(
                     if not isinstance(args, dict):
                         raise ValueError("Tool arguments must be a JSON object")
                     executed_arguments = dict(args)
-                    if selection_error and name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period"}:
+                    if selection_error and name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period", "build_dashboard", "build_chart"}:
                         raise DataSelectionError("Требуется уточнение после ошибки выбора данных: " + selection_error)
-                    if name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period"}:
+                    if name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period", "build_dashboard", "build_chart"}:
                         review_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False), active_source_id,
                                       tuple(source["id"] for source in sources))
                         if review_key not in operation_reviews:
@@ -320,7 +344,7 @@ async def call_llm(
                             active_source_id = source_id = new_id
                         if source_id:
                             result["source_id"] = source_id
-                    if name == "build_chart":
+                    if name in {"build_chart", "build_dashboard"}:
                         if chart_artifacts is not None:
                             chart_artifacts.append(result)
                         # Image bytes never enter the model context or chat history.

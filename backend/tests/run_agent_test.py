@@ -251,7 +251,9 @@ TOOL_SUITES = {'grouping': 'GROUPING_SCENARIOS',
  'preprocessing': 'PREPROCESSING_SCENARIOS',
  'period': 'PERIOD_SCENARIOS',
  'joins': 'JOIN_SCENARIOS',
- 'duplicates': 'DUPLICATE_SCENARIOS'}
+ 'duplicates': 'DUPLICATE_SCENARIOS',
+ 'time': 'TIME_SCENARIOS',
+ 'dashboards': 'DASHBOARD_SCENARIOS'}
 
 
 def load_scenarios(suite):
@@ -401,6 +403,19 @@ class ToolRunner:
             if image_errors:
                 result["image_errors"] = image_errors
                 raise ValueError("Не удалось сохранить графики из ответа")
+            if scenario.get("check_saved_artifacts"):
+                history_response = self.request("get", f"/agent/chats/{body['chat_id']}/history", timeout=self.timeout)
+                history_response.raise_for_status()
+                history = history_response.json()["chat_history"]
+                saved = next((message for message in history if message["id"] == body["message_id"]), None)
+                expected_charts = [{key: value for key, value in chart.items() if key != "image_file"} for chart in body["charts"]]
+                if not expected_charts or saved is None or saved.get("charts") != expected_charts:
+                    raise ValueError("История не содержит сохранённые артефакты с исходными настройками")
+                saved_body = {"charts": saved["charts"]}
+                errors = self.save_charts(saved_body, path.with_name(path.stem + "_reopened.json"))
+                if errors:
+                    raise ValueError("Артефакты из повторно открытой истории недоступны: " + "; ".join(errors))
+                result["saved_artifacts_verified"] = True
             next_state = {"chat_id": body["chat_id"], "sources": body["sources"], "aliases": dict(aliases)}
             previous_ids = {source["id"] for source in state["sources"]}
             added = [source for source in body["sources"] if source["id"] not in previous_ids]
@@ -488,7 +503,7 @@ if __name__ == "__main__":
     if args.suite == "tools" or args.suite in TOOL_SUITES:
         raise SystemExit(run_tool_scenarios("all" if args.suite == "tools" else args.suite, args.dry_run, args.scenario))
     if args.dry_run or args.scenario:
-        parser.error("--dry-run и --scenario поддерживаются наборами tools, grouping, preprocessing, period, joins, duplicates")
+        parser.error("--dry-run и --scenario поддерживаются набором tools и группами: " + ", ".join(TOOL_SUITES))
     if args.suite in ("all", "existing"):
         run_existing_scenarios()
     if args.suite in ("all", "charts"):
