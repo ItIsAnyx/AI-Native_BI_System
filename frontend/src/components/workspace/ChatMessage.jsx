@@ -81,10 +81,11 @@ export default function ChatMessage({
                 <a href={assetUrl(chart.url)} target="_blank" rel="noopener noreferrer">
                   <img
                     src={assetUrl(chart.url)}
-                    alt={`График: ${chart.y_column} по ${chart.x_column}`}
+                    alt={chart.chart_type === "dashboard" ? chart.title : `График: ${chart.y_column} по ${chart.x_column}`}
                     loading="lazy"
                   />
                 </a>
+                {chart.chart_type === "dashboard" && <figcaption>{chart.title}</figcaption>}
                 {chart.truncated && (
                   <figcaption>
                     Показано {chart.plotted_points} из {chart.available_points} точек.

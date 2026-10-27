@@ -32,6 +32,8 @@ class ChartArtifact(BaseModel):
     plotted_points: int
     truncated: bool
     mime_type: Literal["image/png"]
+    title: str = ""
+    panels: list[dict] = Field(default_factory=list)
 
 
 class MessageResponse(BaseModel):

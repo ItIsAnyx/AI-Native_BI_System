@@ -111,10 +111,21 @@ async def get_response(
         client = http_request.app.state.llm_client
         context = await compact_context(client, context)
         charts = []
+        processed_sources = []
         answer = await call_llm(
             client, context, df=df, use_tools=True, chart_artifacts=charts,
             sources=sources, active_source_id=active_source_id,
+            processed_sources=processed_sources,
+            user_request=request.message,
         )
+        processed_records = []
+        for processed in processed_sources:
+            source = processed["source"]
+            path = await run_in_threadpool(chat_storage.save_processed_csv, processed["dataframe"], chat_id, UUID(source["id"]))
+            saved_files.append(path)
+            source["file_path"] = path
+            processed_records.append({**source, "id": UUID(source["id"])})
+            active_source_id = source["id"]
         context.append({"role": "assistant", "content": answer})
         message_id = uuid4()
         saved_charts = []
@@ -147,6 +158,7 @@ async def get_response(
             chat_repository.save_chat_state,
             chat_id, user_id, state["version"], history, context, active_source_id,
             new_source, artifact_records,
+            new_sources=processed_records,
         )
         persisted = True
         return response
