@@ -1,9 +1,9 @@
 import ChatThread from "./ChatThread";
 import ChatComposer from "./ChatComposer";
-import WorkspacePlaceholder from "./WorkspacePlaceholder";
+import DashboardPanel from "./DashboardPanel";
 import SourcesPanel from "./SourcesPanel";
 
-export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
+export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage, notify }) {
   return (
     <div className="panels">
       <section
@@ -36,9 +36,7 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
         className="panel"
         hidden={tab !== "dash"}
       >
-        <WorkspacePlaceholder icon="grid" title="Dashboard">
-          Раздел появится позже. Здесь будут сводки по проектам и активности.
-        </WorkspacePlaceholder>
+        <DashboardPanel chat={workspace.activeChat} onOpenMessage={onOpenMessage} />
       </section>
       <section
         role="tabpanel"

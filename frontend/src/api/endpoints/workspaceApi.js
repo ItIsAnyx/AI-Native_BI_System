@@ -3,8 +3,11 @@ import { privateApi } from "../privateApi";
 import { localWorkspaceApi } from "./localWorkspaceApi";
 
 const id = () => crypto.randomUUID();
-// Модель может отвечать долго (на бэкенде REQUEST_TIMEOUT_SECONDS = 300).
-const AGENT_TIMEOUT_MS = 5 * 60 * 1000;
+// Один запрос может содержать несколько вызовов модели (до MAX_TOOL_CALLS),
+// каждый ограничен REQUEST_TIMEOUT_SECONDS (в .env.example — 600 с).
+// По умолчанию ждём 15 минут; задаётся VITE_AGENT_TIMEOUT_SEC.
+const AGENT_TIMEOUT_MS =
+  (Number(import.meta.env.VITE_AGENT_TIMEOUT_SEC) || 15 * 60) * 1000;
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 // Адрес файла с сервера (графики, CSV). Относительный путь работает через прокси Vite.
@@ -58,6 +61,27 @@ export const workspaceApi = {
     return rows.map(toChat);
   },
 
+  // После обрыва связи: ответ мог сохраниться. Ищем его в истории (для нового
+  // чата сначала находим его в списке по заголовку = первые 80 символов запроса).
+  async findReply({ serverId, text, knownIds = [], expected }) {
+    let id = serverId;
+    if (!id) {
+      const wanted = text.trim().slice(0, 80);
+      const known = new Set(knownIds);
+      const rows = await privateApi.get("/agent/chats");
+      id = rows.find((r) => !known.has(r.id) && r.title.trim() === wanted)?.id;
+      if (!id) return null;
+    }
+    const loaded = await workspaceApi.loadChat(id);
+    const { messages } = loaded;
+    const last = messages.at(-1);
+    const found =
+      messages.length >= expected + 1 &&
+      last?.role === "assistant" &&
+      messages.at(-2)?.text?.trim() === text.trim();
+    return found ? { serverId: id, ...loaded } : null;
+  },
+
   async loadChat(serverId) {
     const [history, sourcesData] = await Promise.all([
       privateApi.get(`/agent/chats/${serverId}/history`),
@@ -83,7 +107,10 @@ export const workspaceApi = {
   },
 
   // POST /agent/response (multipart/form-data). Без serverId сервер сам создаёт чат.
-  async sendMessage({ text, file = null, serverId = null }, { signal } = {}) {
+  async sendMessage(
+    { text, file = null, serverId = null },
+    { signal, onUploadProgress } = {},
+  ) {
     const form = new FormData();
     form.append(
       "payload",
@@ -93,6 +120,7 @@ export const workspaceApi = {
     const data = await privateApi.post("/agent/response", form, {
       signal,
       timeout: AGENT_TIMEOUT_MS,
+      onUploadProgress: file ? onUploadProgress : undefined,
     });
     return {
       message: {

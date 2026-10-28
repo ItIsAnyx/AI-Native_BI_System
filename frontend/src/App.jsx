@@ -25,7 +25,6 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
         </Route>
-        <Route path="/demo" element={<Workspace demo />} />
         <Route element={<ProtectedRoute />}>
           <Route index element={<Workspace />} />
         </Route>

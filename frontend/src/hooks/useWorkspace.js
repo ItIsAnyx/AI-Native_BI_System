@@ -1,18 +1,20 @@
 import { useEffect, useReducer, useRef } from "react";
 import { isCanceled, workspaceApi } from "../api/endpoints/workspaceApi";
-import { localWorkspaceApi } from "../api/endpoints/localWorkspaceApi";
 import {
   initialWorkspace,
   workspaceReducer,
 } from "../features/workspace/workspaceReducer";
-import { getAgentErrorText } from "../features/workspace/agentErrors";
+import { getAgentErrorText, isUncertainError } from "../features/workspace/agentErrors";
 
-// demo — режим /demo: без сервера и входа, все данные локальные.
-export function useWorkspace(demo = false) {
-  const api = demo ? localWorkspaceApi : workspaceApi;
+export function useWorkspace() {
+  const api = workspaceApi;
   const [state, dispatch] = useReducer(workspaceReducer, initialWorkspace);
   const requests = useRef(new Map());
   const sending = useRef(false);
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  }, [state]);
   const activeChat = state.chats.find((c) => c.id === state.activeId) ?? null;
 
   useEffect(() => {
@@ -24,7 +26,6 @@ export function useWorkspace(demo = false) {
   }, []);
 
   useEffect(() => {
-    if (demo) return undefined;
     let cancelled = false;
     dispatch({ type: "chats-loading" });
     workspaceApi
@@ -38,7 +39,7 @@ export function useWorkspace(demo = false) {
     return () => {
       cancelled = true;
     };
-  }, [demo]);
+  }, []);
 
   async function createProject(name, chatId = null) {
     const normalized = name.trim().replace(/\s+/g, " ");
@@ -83,6 +84,30 @@ export function useWorkspace(demo = false) {
         });
     dispatch({ type: "project-deleted", id, deleteChats });
   }
+  // Проверяет, не сохранился ли ответ на сервере (после таймаута или обрыва сети).
+  async function recoverReply(chatId, text) {
+    const current = latest.current.chats.find((c) => c.id === chatId);
+    if (!current) return false;
+    try {
+      const found = await workspaceApi.findReply({
+        serverId: current.serverId,
+        text,
+        knownIds: latest.current.chats.map((c) => c.serverId).filter(Boolean),
+        expected: current.messages.filter((m) => !m.error).length,
+      });
+      if (!found) return false;
+      dispatch({
+        type: "chat-recovered",
+        chatId,
+        serverId: found.serverId,
+        messages: found.messages,
+        sources: found.sources,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   function receiveReply(chat, message) {
     const chatId = chat.id;
     const controller = new AbortController();
@@ -94,23 +119,34 @@ export function useWorkspace(demo = false) {
           file: message.files?.find((f) => f instanceof File) ?? null,
           serverId: chat.serverId ?? null,
         },
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          onUploadProgress: (event) =>
+            dispatch({
+              type: "upload-progress",
+              chatId,
+              progress: event.total ? event.loaded / event.total : null,
+            }),
+        },
       )
       .then(({ message: reply, serverId, sources }) =>
         dispatch({ type: "reply-received", chatId, message: reply, serverId, sources }),
       )
-      .catch((error) => {
-        if (!isCanceled(error))
-          dispatch({
-            type: "reply-received",
-            chatId,
-            message: {
-              id: crypto.randomUUID(),
-              role: "assistant",
-              error: true,
-              errorText: getAgentErrorText(error),
-            },
-          });
+      .catch(async (error) => {
+        if (isCanceled(error)) return;
+        const uncertain = isUncertainError(error);
+        if (uncertain && (await recoverReply(chatId, message.text))) return;
+        dispatch({
+          type: "reply-received",
+          chatId,
+          message: {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            error: true,
+            recoverable: uncertain,
+            errorText: getAgentErrorText(error),
+          },
+        });
       })
       .finally(() => {
         if (requests.current.get(chatId) === controller)
@@ -119,7 +155,7 @@ export function useWorkspace(demo = false) {
   }
   // Переписка чата с сервера подгружается при первом открытии.
   function loadChat(chat) {
-    if (demo || !chat?.serverId || chat.loaded || chat.loading) return;
+    if (!chat?.serverId || chat.loaded || chat.loading) return;
     dispatch({ type: "chat-loading", id: chat.id });
     workspaceApi
       .loadChat(chat.serverId)
@@ -133,7 +169,6 @@ export function useWorkspace(demo = false) {
     loadChat(state.chats.find((c) => c.id === id));
   }
   function reloadChats() {
-    if (demo) return;
     dispatch({ type: "chats-loading" });
     workspaceApi
       .listChats()
@@ -175,8 +210,23 @@ export function useWorkspace(demo = false) {
       return;
     const message = activeChat.messages.findLast((m) => m.role === "user");
     if (!message) return;
-    dispatch({ type: "reply-started", chatId: activeChat.id });
-    receiveReply(activeChat, message);
+    const chat = activeChat;
+    dispatch({ type: "reply-started", chatId: chat.id });
+    // После обрыва связи сначала проверяем, не появился ли ответ на сервере.
+    if (chat.messages.at(-1)?.recoverable) {
+      const controller = new AbortController();
+      requests.current.set(chat.id, controller);
+      recoverReply(chat.id, message.text)
+        .then((found) => {
+          if (!found && !controller.signal.aborted) receiveReply(chat, message);
+        })
+        .finally(() => {
+          if (requests.current.get(chat.id) === controller)
+            requests.current.delete(chat.id);
+        });
+      return;
+    }
+    receiveReply(chat, message);
   }
 
   return {

@@ -1,38 +1,14 @@
 import { lazy, Suspense } from "react";
 import Icon from "../common/Icon";
-import { assetUrl } from "../../api/endpoints/workspaceApi";
+import ChartFigure from "./ChartFigure";
 import AiAvatar from "./AiAvatar";
 
 // Библиотека разметки (react-markdown) подгружается отдельным файлом, когда нужен первый ответ ассистента.
 const Markdown = lazy(() => import("./Markdown"));
 
-const suggestions = [
-  "Составить подробный чек-лист",
-  "Написать черновик письма команде",
-  "Найти риски и пути их снижения",
-];
-const steps = [
-  [
-    "Уточните цель и критерии успеха",
-    "Сформулируйте результат в одном предложении и определите 2–3 измеримых показателя.",
-  ],
-  [
-    "Разбейте работу на этапы",
-    "Выделите короткие итерации с понятными владельцами и сроками.",
-  ],
-  [
-    "Соберите нужные материалы",
-    "Подготовьте источники, примеры и ограничения, которые стоит учесть.",
-  ],
-  [
-    "Назначьте точку проверки",
-    "Запланируйте короткий обзор, чтобы вовремя скорректировать курс.",
-  ],
-];
 export default function ChatMessage({
   message,
   onRetry,
-  onSend,
   pending,
   canRetry,
 }) {
@@ -50,7 +26,7 @@ export default function ChatMessage({
       </div>
     );
   return (
-    <div className="msg-ai">
+    <div className="msg-ai" id={`msg-${message.id}`}>
       <AiAvatar />
       <div className="ai-body">
         {message.error ? (
@@ -71,60 +47,14 @@ export default function ChatMessage({
               </button>
             )}
           </div>
-        ) : message.source !== "demo" ? (
+        ) : (
           <>
             <Suspense fallback={<p className="assistant-text">{message.text}</p>}>
               <Markdown>{message.text}</Markdown>
             </Suspense>
             {message.charts?.map((chart) => (
-              <figure className="chart" key={chart.id}>
-                <a href={assetUrl(chart.url)} target="_blank" rel="noopener noreferrer">
-                  <img
-                    src={assetUrl(chart.url)}
-                    alt={chart.chart_type === "dashboard" ? chart.title : `График: ${chart.y_column} по ${chart.x_column}`}
-                    loading="lazy"
-                  />
-                </a>
-                {chart.chart_type === "dashboard" && <figcaption>{chart.title}</figcaption>}
-                {chart.truncated && (
-                  <figcaption>
-                    Показано {chart.plotted_points} из {chart.available_points} точек.
-                  </figcaption>
-                )}
-              </figure>
+              <ChartFigure chart={chart} key={chart.id} />
             ))}
-          </>
-        ) : (
-          <>
-            <h3>Предлагаемый план действий</h3>
-            <p>
-              Это демонстрационный ответ: так Aster структурирует рекомендации
-              по вашему запросу.
-            </p>
-            <ol className="recs">
-              {steps.map(([title, text]) => (
-                <li key={title}>
-                  <div>
-                    <strong>{title}</strong>
-                    <span>{text}</span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-            <p className="next-h">Что можно сделать дальше</p>
-            <div className="chips">
-              {suggestions.map((text) => (
-                <button
-                  type="button"
-                  className="chip"
-                  key={text}
-                  disabled={pending}
-                  onClick={() => onSend(text)}
-                >
-                  {text}
-                </button>
-              ))}
-            </div>
           </>
         )}
       </div>

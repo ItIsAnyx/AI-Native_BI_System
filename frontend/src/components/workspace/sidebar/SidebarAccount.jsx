@@ -1,6 +1,6 @@
 import Icon from "../../common/Icon";
 
-export default function SidebarAccount({ user, demo, loggingOut, onLogout }) {
+export default function SidebarAccount({ user, loggingOut, onLogout }) {
   const name = user?.login || user?.email?.split("@")[0] || "Гость";
   return (
     <div className="side-bottom">
@@ -11,7 +11,6 @@ export default function SidebarAccount({ user, demo, loggingOut, onLogout }) {
         <div className="account-info">
           <p className="account-name">
             {name}
-            {demo && <span className="session-badge">Демо</span>}
           </p>
           <p className="muted small">{user?.email}</p>
         </div>

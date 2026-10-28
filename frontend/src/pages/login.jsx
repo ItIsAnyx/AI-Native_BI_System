@@ -1,5 +1,4 @@
 import { NavLink, useLocation } from "react-router";
-import TransitionLink from "../components/common/TransitionLink";
 import TransitionRedirect from "../components/common/TransitionRedirect";
 
 import Button from "../components/ui/Button";
@@ -79,15 +78,6 @@ export default function Login() {
           </p>
         </div>
       </div>
-      <div className="divider">
-        <span>или</span>
-      </div>
-      <TransitionLink to="/demo" className="btn btn-secondary btn-block">
-        Войти в демо-режиме
-      </TransitionLink>
-      <p className="hint small center">
-        Демо доступно без регистрации. Вход в аккаунт проверяется сервером.
-      </p>
     </>
   );
 }

@@ -4,7 +4,6 @@ import ThemeToggle from "../auth/ThemeToggle";
 export default function WorkspaceHeader({
   title,
   projectName,
-  demo,
   drawer,
   onOpenMenu,
   theme,
@@ -26,7 +25,6 @@ export default function WorkspaceHeader({
         <h1>{title || "Новый чат"}</h1>
         <p className="muted small">
           Рабочее пространство · {projectName || "Личное"}
-          {demo && " · Демо"}
         </p>
       </div>
       <ThemeToggle theme={theme} onToggle={onToggleTheme} />

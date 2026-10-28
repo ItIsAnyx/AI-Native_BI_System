@@ -1,4 +1,4 @@
-// Локальные (не серверные) операции: проекты, а также режим /demo целиком.
+// Локальные (не серверные) операции: проекты и черновики чатов.
 // Проекты на бэкенде пока не поддерживаются, поэтому живут только в браузере.
 const id = () => crypto.randomUUID();
 
@@ -29,27 +29,5 @@ export const localWorkspaceApi = {
   },
   async moveChat(chatId, projectId) {
     return { chatId, projectId };
-  },
-  // Демонстрационный ответ (только для /demo, без сервера).
-  sendMessage({ text }, { signal } = {}) {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted)
-        return reject(new DOMException("Aborted", "AbortError"));
-      const abort = () => {
-        clearTimeout(timer);
-        reject(new DOMException("Aborted", "AbortError"));
-      };
-      const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", abort);
-        if (/\/error/i.test(text))
-          return reject(new Error("Демонстрационная ошибка ответа"));
-        resolve({
-          message: { id: id(), role: "assistant", source: "demo" },
-          serverId: null,
-          sources: [],
-        });
-      }, 1100);
-      signal?.addEventListener("abort", abort, { once: true });
-    });
   },
 };
