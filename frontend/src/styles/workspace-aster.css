@@ -381,3 +381,8 @@
 
 /* Кнопка отправки прижата вправо (подсказки по клавишам в строке больше нет) */
 .app .composer-row .send-btn { margin-left: auto; }
+
+/* ---------- Формулы (KaTeX) ---------- */
+.markdown .katex { font-size: 1.08em; }
+.markdown .katex-display { margin: 12px 0; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.markdown .katex-error { color: var(--danger); }
