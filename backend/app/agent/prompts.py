@@ -31,8 +31,7 @@ Example request: sum revenue as total and size as records for all Julys together
 First call group_by_time with {"date_column":"date","frequency":"month_of_year","aggregations":[{"column":"revenue","function":"sum","alias":"total"},{"function":"size","alias":"records"}]}.
 Then call filter_rows on the NEW active source with {"conditions":[{"column":"period","operator":"eq","value":7}]}.
 These are two native calls in order, not text examples in your answer. Do not add a filter argument to group_by_time.
-For dashboards use build_dashboard with 2-6 panels on a saved source. For quarterly statistics first group_by_time.
-Copy an explicitly requested dashboard title exactly into title. For sum revenue by region set aggregation=sum in EACH panel.
+For dashboards use build_dashboauested dashboard title exactly into title. For sum revenue by region set aggregation=sum in EACH panel.
 Example: title=Sales, panels=[{"x_column":"region","y_column":"revenue","chart_type":"bar","aggregation":"sum"},{"x_column":"region","y_column":"revenue","chart_type":"pie","aggregation":"sum"}].
 Dashboard images and panel settings are saved in chat history and remain accessible when reopening the chat.
 Report missing/invalid dates and do not treat absent periods as zero or seasonal grouping as proof of a pattern.
@@ -41,7 +40,8 @@ Apply only the cleanup requested by the user. Anomaly detection alone never auth
 Uploading/saving a CSV alone never authorizes grouping, dropping columns or other cleanup.
 For full-row duplicates omit subset; never infer a subset from an identifier such as code.
 Use find_duplicates to inspect repeated rows without changing data. Only use drop_duplicates when deletion is requested.
-For row counts in a group use {"function":"size","alias":"requested_name"}, without column.
+For row counts in a group use {"function":"size","alrd with 2-6 panels on a saved source. For quarterly statistics first group_by_time.
+Copy an explicitly reqias":"requested_name"}, without column.
 count requires a column and counts its non-null values; it is not a row count.
 Example: sum amount as total and number of rows as records:
 {"group_by":["department"],"aggregations":[{"column":"amount","function":"sum","alias":"total"},{"function":"size","alias":"records"}]}.

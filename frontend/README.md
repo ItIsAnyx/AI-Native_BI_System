@@ -139,6 +139,12 @@ src/
 
 ## Docker
 
+При запуске через корневой `docker-compose.yaml` фронтенд доступен на
+`http://localhost:3000`. Compose задаёт backend переменную
+`FRONTEND_URL=http://localhost:3000`, переопределяя значение из `backend/.env`.
+После изменения этой настройки пересоздайте backend: `docker compose up -d --no-deps backend`.
+Адрес страницы должен совпадать с разрешённым origin, включая имя хоста и порт.
+
 ```sh
 docker build -t aster-frontend --build-arg VITE_API_URL=http://localhost:8080 .
 docker run --rm -p 3000:3000 aster-frontend

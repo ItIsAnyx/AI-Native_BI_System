@@ -23,6 +23,7 @@ services:
     environment:
       DB_HOST: database
       DB_PORT: 5432
+      FRONTEND_URL: http://localhost:3000
       OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
       STORAGE_DIR: /app/storage
     ports:
