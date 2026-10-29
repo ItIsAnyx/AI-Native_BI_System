@@ -139,6 +139,22 @@ def info_to_str(df: pd.DataFrame) -> dict:
         "technical_id_column": df.attrs.get("technical_id_column"),
     }
 
+def get_dataset_columns(df: pd.DataFrame) -> dict:
+    """Expose schema and small value samples without calculating full statistics."""
+    descriptions = df.attrs.get("column_descriptions", {})
+    samples = json.loads(df.head(3).to_json(orient="records"))
+    technical_id = df.attrs.get("technical_id_column")
+    return {"columns": [
+        {"name": column, "dtype": str(df[column].dtype),
+         "description": descriptions.get(column),
+         "is_technical_id": column == technical_id,
+         "is_possible_key": column in df.attrs.get("key_columns", []),
+         "sample_values": [row[column] for row in samples]}
+        for column in df.columns
+    ], "description_note": "Null descriptions mean no verified business definition is available. "
+       "Any interpretation based on names or samples must be identified as an inference."}
+
+
 def read_dataset_and_gain_statistics(df: pd.DataFrame) -> dict:
     return info_to_str(df)
 
