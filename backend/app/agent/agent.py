@@ -196,16 +196,16 @@ async def call_llm(
                 ])
                 continue
             grounded = render_tool_results(executions, russian)
-            workflow_executed = any(item["name"] in {"group_by_time", "build_dashboard", "build_chart"}
-                                    and "error" not in item["result"] for item in executions)
+            workflow_executed = bool(executions)
             if workflow_executed and not selection_error and out.choices[0].finish_reason in ("stop", "length"):
                 completed = [{
                     "name": item["name"], "arguments": item["arguments"],
                     "result": {key: value for key, value in item["result"].items() if key in {
-                        "error", "source_id", "parent_source_id", "frequency", "total_rows", "chart_type", "panels"}},
+                        "error", "source_id", "parent_source_id", "frequency", "total_rows", "chart_type", "panels",
+                        "title", "aggregation", "x_column", "y_column"}},
                 } for item in executions if isinstance(item["result"], dict)]
                 mismatch = await review_tool_call(client, last_question, "completed_workflow",
-                                                 {"executions": completed}, sources, active_source_id)
+                                                 {"executions": completed, "answer": answer}, sources, active_source_id)
                 workflow_checks += 1
                 if mismatch:
                     if tools_enabled and workflow_checks == 1:
@@ -218,12 +218,7 @@ async def call_llm(
                         continue
                     notice = ("Не все запрошенные операции завершены. " if russian
                               else "Some requested operations remain incomplete. ") + mismatch
-                    return (grounded + "\n\n" if grounded else "") + notice
-            if grounded is not None and out.choices[0].finish_reason in ("stop", "length"):
-                if has_tool_markup(answer):
-                    grounded += ("\n\nСледующий вызов не выполнен. Не все запрошенные операции завершены."
-                                 if russian else "\n\nThe next call was not executed. Some requested operations remain incomplete.")
-                return grounded
+                    return notice
             if out.choices[0].finish_reason == "length":
                 return await continue_answer(client, working_messages, answer)
             if out.choices[0].finish_reason != "stop":

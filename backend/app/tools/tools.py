@@ -4,7 +4,7 @@ from app.tools.period import get_rows_by_period
 from app.tools.joins import join_tables, JOIN_TYPES, JOIN_RELATIONSHIPS
 from app.tools.relationships import analyze_relationship
 from app.tools.charts import build_chart, CHART_TYPES, AGGREGATIONS
-from app.tools.dataset import list_sources, read_dataset_and_gain_statistics
+from app.tools.dataset import list_sources, read_dataset_and_gain_statistics, get_dataset_columns
 from app.tools.preprocessing import PREPROCESSING_FUNCTIONS, TRANSFORM_TOOLS as PREPROCESSING_TRANSFORMS
 from app.tools.preprocessing_tools import PREPROCESSING_TOOLS
 from app.tools.grouping import group_dataset, GROUP_AGGREGATIONS
@@ -14,6 +14,7 @@ from app.tools.dashboards import build_dashboard
 TRANSFORM_TOOLS = PREPROCESSING_TRANSFORMS | {"group_dataset", "group_by_time"}
 
 TOOL_FUNCTIONS = {
+    "get_dataset_columns": get_dataset_columns,
     "get_date_range": get_date_range,
     "group_by_time": group_by_time,
     "build_dashboard": build_dashboard,
@@ -30,6 +31,11 @@ TOOL_FUNCTIONS = {
 }
 
 tools = [
+    {"type": "function", "function": {
+        "name": "get_dataset_columns",
+        "description": "Получить названия и типы столбцов, доступные описания и до трёх примеров значений. Для словаря столбцов и объяснения назначения используй этот инструмент, без полной статистики. Если description=null, подтверждённого описания нет: обозначь трактовку по названию и примерам как предположение. Технический ID не является бизнес-ключом.",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    }},
     {
         "type": "function",
         "function": {
@@ -126,7 +132,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "read_dataset_and_gain_statistics",
-            "description": "Получить структуру и статистику CSV-источника чата: число строк, названия и типы столбцов, пропуски, уникальные значения, среднее, минимум, максимум, медиану числовых столбцов и пять примеров строк. warnings содержит замечания о заголовках, числе полей и возможных ключах: сообщи о них пользователю и уточни неоднозначности. key_columns — исходные ключи, сохранённые строками. technical_id_column — созданный приложением ID строки, уникальный только внутри источника; это не бизнес-ключ. Используй, когда нужны эти сведения или названия столбцов для другого инструмента. Датасет подставляет приложение; source_id можно не указывать для активного источника.",
+            "description": "Получить структуру и статистику CSV-источника чата: число строк, названия и типы столбцов, пропуски, уникальные значения, среднее, минимум, максимум, медиану числовых столбцов и пять примеров строк. warnings содержит диагностические замечания о заголовках, числе полей и возможных ключах. key_columns — исходные ключи, сохранённые строками. technical_id_column — созданный приложением ID строки, уникальный только внутри источника; это не бизнес-ключ. Используй только для запроса статистического обзора; для названий и назначения столбцов используй get_dataset_columns. Не перечисляй все warnings: объясни только влияющие на текущий результат. Датасет подставляет приложение; source_id можно не указывать для активного источника.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -253,7 +259,7 @@ tools.extend([
 ])
 
 # Show inspection first, then calendar grouping before grouping raw date values.
-inspection_order = {"list_sources": 0, "read_dataset_and_gain_statistics": 1, "get_date_range": 2, "group_by_time": 3}
+inspection_order = {"list_sources": 0, "get_dataset_columns": 1, "read_dataset_and_gain_statistics": 2, "get_date_range": 2, "group_by_time": 3}
 tools.sort(key=lambda tool: inspection_order.get(tool["function"]["name"], 4))
 
 for tool in tools:
