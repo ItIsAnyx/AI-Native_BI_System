@@ -411,3 +411,29 @@
 
 /* Вкладки Dashboard и Data sources прокручиваются внутри панели (у чата прокрутка в .thread) */
 .app .panel:not(.panel-chat) { overflow-y: auto; }
+
+/* Таблицы: полоса прокрутки в цвет темы, заголовок остаётся читаемым */
+.app .md-table { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; border-radius: var(--r); }
+.app .md-table:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app .md-table::-webkit-scrollbar { height: 8px; }
+.app .md-table::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 999px; }
+
+/* Таблицы в ответах. Столбцы получают ширину по содержимому (переносы «по буквам» отключены:
+   overflow-wrap: anywhere из .ai-body делает минимальную ширину столбца равной одному символу),
+   длинный текст переносится по словам в столбце не шире 360px, широкая таблица прокручивается. */
+.app .md-table { display: block; width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; margin: 0 0 12px; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.app .ai-body { min-width: 0; max-width: 100%; }
+.app .markdown table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 14px; table-layout: auto; }
+.app .markdown th,
+.app .markdown td {
+  padding: 8px 14px;
+  text-align: left;
+  vertical-align: top;
+  min-width: 140px;
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.app .markdown th { background: var(--accent-soft); font-weight: 600; white-space: nowrap; }
+.app .markdown td:has(> :only-child:is(code)) { white-space: nowrap; }
