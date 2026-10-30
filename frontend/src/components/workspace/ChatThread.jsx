@@ -8,6 +8,7 @@ export default function ChatThread({ chat, onSend, onRetry, onReload }) {
   useEffect(() => {
     if (thread.current) thread.current.scrollTop = thread.current.scrollHeight;
   }, [chat?.id, chat?.messages.length, chat?.pending]);
+  const uploading = chat?.uploadProgress != null && chat.uploadProgress < 1;
   return (
     <div
       ref={thread}
@@ -75,18 +76,26 @@ export default function ChatThread({ chat, onSend, onRetry, onReload }) {
           pending={chat.pending}
           canRetry={index === chat.messages.length - 1}
           onRetry={onRetry}
-          onSend={onSend}
         />
       ))}
       {chat?.pending && (
         <div className="msg-ai" role="status" aria-label="Aster печатает">
           <AiAvatar />
           <div className="ai-body">
-            <div className="typing" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </div>
+            {uploading ? (
+              <div className="upload-progress">
+                <p className="muted small">
+                  Загрузка файла… {Math.round(chat.uploadProgress * 100)}%
+                </p>
+                <progress max="1" value={chat.uploadProgress} />
+              </div>
+            ) : (
+              <div className="typing" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </div>
+            )}
           </div>
         </div>
       )}

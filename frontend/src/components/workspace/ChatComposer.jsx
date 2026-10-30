@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "../common/Icon";
+import { MAX_FILE_MB } from "../../features/workspace/agentErrors";
 
 export default function ChatComposer({ pending, onSend, notify }) {
   const [text, setText] = useState("");
@@ -41,6 +42,10 @@ export default function ChatComposer({ pending, onSend, notify }) {
     // Бэкенд принимает один CSV-файл.
     if (!file.name.toLowerCase().endsWith(".csv")) {
       notify("Можно прикрепить только CSV-файл.");
+      return;
+    }
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      notify(`Файл больше ${MAX_FILE_MB} МБ. Загрузите файл поменьше.`);
       return;
     }
     if (selected.length > 1) notify("Можно прикрепить только один файл.");
@@ -117,7 +122,7 @@ export default function ChatComposer({ pending, onSend, notify }) {
         </div>
       </form>
       <p className="muted small center disclaimer">
-        Aster может ошибаться. К сообщению можно прикрепить один CSV-файл.
+        Aster может ошибаться. К сообщению можно прикрепить один CSV-файл до {MAX_FILE_MB} МБ.
       </p>
     </div>
   );

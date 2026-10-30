@@ -7,7 +7,6 @@ import SidebarAccount from "./sidebar/SidebarAccount";
 export default function Sidebar({
   workspace,
   user,
-  demo,
   query,
   onQuery,
   open,
@@ -67,7 +66,6 @@ export default function Sidebar({
         />
         <SidebarAccount
           user={user}
-          demo={demo}
           loggingOut={loggingOut}
           onLogout={onLogout}
         />
