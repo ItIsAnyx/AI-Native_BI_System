@@ -7,7 +7,7 @@ from matplotlib import rc_context
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
-CHART_TYPES = ("line", "scatter", "bar", "barh", "area", "pie")
+CHART_TYPES = ("line", "scatter", "bar", "barh", "area", "pie", "histogram")
 AGGREGATIONS = ("none", "sum", "mean", "count")
 _RENDER_LOCK = threading.Lock()
 
@@ -22,7 +22,9 @@ def build_chart(df: pd.DataFrame, x_column: str, y_column: str,
     for column in (x_column, y_column):
         if not isinstance(column, str) or not column or column not in df.columns:
             raise ValueError(f"Столбец {column!r} не найден")
-    if x_column == y_column:
+    if chart_type == "histogram" and (x_column != y_column or aggregation != "none"):
+        raise ValueError("Для histogram укажите один показатель в X и Y, aggregation=none")
+    if x_column == y_column and chart_type != "histogram":
         raise ValueError("Выберите два разных столбца")
     if chart_type not in CHART_TYPES:
         raise ValueError(f"chart_type: выберите один из {CHART_TYPES}")
@@ -33,7 +35,7 @@ def build_chart(df: pd.DataFrame, x_column: str, y_column: str,
     if not isinstance(title, str) or len(title) > 200:
         raise ValueError("title должен быть строкой длиной до 200 символов")
 
-    data = df[[x_column, y_column]].dropna().copy()
+    data = df[list(dict.fromkeys([x_column, y_column]))].dropna().copy()
     for column in (x_column, y_column):
         if pd.api.types.is_numeric_dtype(data[column]):
             data = data.loc[np.isfinite(data[column])]
@@ -80,6 +82,8 @@ def build_chart(df: pd.DataFrame, x_column: str, y_column: str,
             else:
                 ax.barh(positions, values)
                 ax.set_yticks(positions, [str(value) for value in categories])
+        elif chart_type == "histogram":
+            ax.hist(x, bins="auto")
         elif chart_type == "pie":
             ax.pie(y, labels=[str(value) for value in x], autopct="%1.1f%%")
         elif chart_type == "area":
@@ -90,13 +94,13 @@ def build_chart(df: pd.DataFrame, x_column: str, y_column: str,
             ax.plot(x, y)
         if chart_type != "pie":
             ax.set_xlabel(x_column)
-            ax.set_ylabel(y_column)
+            ax.set_ylabel("Количество наблюдений" if chart_type == "histogram" else y_column)
         ax.set_title(title or f"{value_column} / {category_column}", parse_math=False)
         output = io.BytesIO()
         figure.savefig(output, format="png", dpi=120)
 
     return {
-        "chart_type": chart_type, "x_column": x_column, "y_column": y_column,
+        "chart_type": chart_type, "title": title, "x_column": x_column, "y_column": y_column,
         "aggregation": aggregation, "total_rows": len(df), "valid_rows": valid_rows,
         "excluded_rows": len(df) - valid_rows, "available_points": available_points,
         "plotted_points": len(data), "truncated": available_points > len(data),

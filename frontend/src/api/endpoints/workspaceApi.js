@@ -1,10 +1,9 @@
 import axios from "axios";
 import { privateApi } from "../privateApi";
-import { localWorkspaceApi } from "./localWorkspaceApi";
 
 const id = () => crypto.randomUUID();
-// Модель может отвечать долго (на бэкенде REQUEST_TIMEOUT_SECONDS = 300).
-const AGENT_TIMEOUT_MS = 5 * 60 * 1000;
+// A dashboard runs several model calls, each with its own backend timeout.
+const AGENT_TIMEOUT_MS = (Number(import.meta.env.VITE_AGENT_TIMEOUT_SEC) || 30 * 60) * 1000;
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 // Адрес файла с сервера (графики, CSV). Относительный путь работает через прокси Vite.
@@ -16,7 +15,7 @@ function toChat(row) {
   return {
     id: row.id,
     serverId: row.id,
-    projectId: null,
+    projectId: row.project_id ?? null,
     title: row.title,
     messages: [],
     sources: [],
@@ -50,8 +49,20 @@ function toMessages(history, sources) {
 }
 
 export const workspaceApi = {
-  // Проекты и перенос чатов пока только локальные: на бэкенде их нет.
-  ...localWorkspaceApi,
+  cancelRequest: (chatId, requestId) => privateApi.post(`/agent/chats/${chatId}/cancel?request_id=${requestId}`, null, { timeout: 60000 }),
+  listProjects: () => privateApi.get("/agent/projects"),
+  createProject: (body) => privateApi.post("/agent/projects", body),
+  deleteProject: (id, { deleteChats = false } = {}) => privateApi.delete(`/agent/projects/${id}?delete_chats=${deleteChats}`),
+  moveChat: (chatId, projectId) => privateApi.put(`/agent/chats/${chatId}/project`, { project_id: projectId }),
+  listDashboards: () => privateApi.get("/agent/dashboards"),
+  listConnections: () => privateApi.get("/agent/database-connections"),
+  listTables: (id) => privateApi.get(`/agent/database-connections/${encodeURIComponent(id)}/tables`),
+  connectSource: (chatId, body) => privateApi.post(`/agent/chats/${chatId}/database-sources`, body),
+  async createChat({ projectId = null } = {}) {
+    const { chat_id } = await privateApi.post("/agent/chats");
+    if (projectId) await workspaceApi.moveChat(chat_id, projectId);
+    return { ...toChat({ id: chat_id, title: "Новый чат", project_id: projectId }), loaded: true };
+  },
 
   async listChats() {
     const rows = await privateApi.get("/agent/chats");
@@ -83,11 +94,11 @@ export const workspaceApi = {
   },
 
   // POST /agent/response (multipart/form-data). Без serverId сервер сам создаёт чат.
-  async sendMessage({ text, file = null, serverId = null }, { signal } = {}) {
+  async sendMessage({ text, file = null, serverId = null, requestId }, { signal } = {}) {
     const form = new FormData();
     form.append(
       "payload",
-      JSON.stringify({ message: text, chat_id: serverId }),
+      JSON.stringify({ message: text, chat_id: serverId, request_id: requestId }),
     );
     if (file) form.append("file", file);
     const data = await privateApi.post("/agent/response", form, {

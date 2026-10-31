@@ -382,6 +382,41 @@
 /* Кнопка отправки прижата вправо (подсказки по клавишам в строке больше нет) */
 .app .composer-row .send-btn { margin-left: auto; }
 
+.app .send-btn.stop-btn {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--surface);
+  box-shadow: none;
+  transition: transform .15s, filter .15s, opacity .15s;
+}
+.app .send-btn.stop-btn .ic { width: 19px; height: 19px; }
+.app .send-btn.stop-btn:hover:not(:disabled) {
+  background: var(--text);
+  filter: brightness(.88);
+  transform: translateY(-1px);
+}
+.app .send-btn.stop-btn:active:not(:disabled) { transform: scale(.94); }
+.app .send-btn.stop-btn:focus-visible { border-radius: 50%; }
+.app .send-btn.stop-btn:disabled { background: var(--text); opacity: .65; cursor: wait; }
+.app .send-btn.stop-btn[aria-busy="true"] .ic { visibility: hidden; }
+.app .send-btn.stop-btn[aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: composer-stop-spin .7s linear infinite;
+}
+@keyframes composer-stop-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .app .send-btn.stop-btn { transition: none; }
+  .app .send-btn.stop-btn[aria-busy="true"]::after { animation: none; }
+}
+
 /* ---------- Формулы (KaTeX) ---------- */
 .markdown .katex { font-size: 1.08em; }
 .markdown .katex-display { margin: 12px 0; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }

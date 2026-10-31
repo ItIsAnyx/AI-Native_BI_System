@@ -4,17 +4,19 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from openai import APIError, AsyncOpenAI
-from starlette.concurrency import run_in_threadpool
+from app.services.cancellation import interruptible, run_in_threadpool
+from app.agent.completion import model_completion
 
 from app.config import settings
 from app.agent.prompts import summary_prompt
-from app.agent.tool_results import has_tool_markup, render_tool_results
+from app.agent.tool_results import has_tool_markup, render_tool_results, render_query_results
 from app.agent.operation_review import review_tool_call
+from app.agent.tool_selection import select_model_tools
 from app.agent.token_counter import count_tokens
 from app.tools.dataset import list_sources, load_source
 from app.tools.joins import join_source_ids
 from app.tools.errors import DataSelectionError
-from app.tools.tools import tools, TOOL_FUNCTIONS, TRANSFORM_TOOLS
+from app.tools.tools import tools, MODEL_TOOLS, TOOL_FUNCTIONS, TRANSFORM_TOOLS, ANALYTIC_TOOLS
 
 
 CONTEXT_LIMIT_MESSAGE = (
@@ -28,24 +30,34 @@ class ContextLimitError(Exception):
     pass
 
 
+def completed_executions(executions):
+    return [{"name": item["name"], "arguments": item["arguments"],
+             "result": {key: value[:20] if key == "rows" else value for key, value in item["result"].items()
+                        if key in {"error", "source_id", "parent_source_id", "frequency", "total_rows", "chart_type", "panels",
+                                   "title", "aggregation", "x_column", "y_column", "rows", "columns", "method", "calculation_note"}}}
+            for item in executions if isinstance(item["result"], dict)]
+
+
 async def request_model(
     client: AsyncOpenAI, messages: list[dict], use_tools: bool = False,
     continue_final_message: bool = False,
+    available_tools: list | None = None,
 ):
     if not settings.MODEL_NAME:
         raise HTTPException(status_code=503, detail="Model is not configured. Set MODEL_NAME and restart the application")
     available_tokens = settings.MAX_CONTEXT_TOKENS - settings.MAX_RESPONSE_TOKENS
     if available_tokens <= 0:
         raise HTTPException(status_code=503, detail="MAX_RESPONSE_TOKENS must be smaller than MAX_CONTEXT_TOKENS")
-    token_count = await run_in_threadpool(count_tokens, messages, tools if use_tools else None, continue_final_message)
+    menu = MODEL_TOOLS if available_tools is None else available_tools
+    token_count = await run_in_threadpool(count_tokens, messages, menu if use_tools else None, continue_final_message)
     if token_count > available_tokens:
         raise ContextLimitError()
-    return await client.chat.completions.create(
+    return await interruptible(model_completion(client,
         model=settings.MODEL_NAME, messages=messages,
-        tools=tools if use_tools else [],
+        tools=menu if use_tools else [],
         tool_choice="auto" if use_tools else "none",
         temperature=0, max_tokens=settings.MAX_RESPONSE_TOKENS,
-    )
+    ))
 
 
 async def summarize_messages(client: AsyncOpenAI, messages: list[dict]) -> str | None:
@@ -149,6 +161,10 @@ async def call_llm(
     repaired_draft = False
     selection_error = None
     operation_reviews = {}
+    # Review follow-up requests against the same dialogue as the main agent.
+    # Keep recent context bounded; these messages are data for the reviewer.
+    review_dialogue = [{"role": m["role"], "content": m["content"][-4000:]}
+                       for m in messages[1:-1][-6:]]
     workflow_checks = 0
     if use_tools:
         availability_note = (
@@ -156,6 +172,8 @@ async def call_llm(
             + json.dumps({
                 "sources": list_sources(sources),
                 "active_source_id": active_source_id,
+                "query_table": "dataset",
+                "query_table_note": "query_dataset SQL always uses FROM dataset; source_id selects its data separately, never use the filename or UUID as a SQL table name.",
                 "active_schema": {"total_rows": len(df), "columns": {name: str(dtype) for name, dtype in df.dtypes.items()},
                                   "key_columns": df.attrs.get("key_columns", []),
                                   "technical_id_column": df.attrs.get("technical_id_column")} if df is not None else None,
@@ -175,7 +193,8 @@ async def call_llm(
         )
 
         try:
-            out = await request_model(client, working_messages, tools_enabled)
+            out = await request_model(client, working_messages, tools_enabled,
+                                      available_tools=select_model_tools(last_question, executions))
         except ContextLimitError:
             grounded = render_tool_results(executions, russian)
             if grounded:
@@ -198,14 +217,9 @@ async def call_llm(
             grounded = render_tool_results(executions, russian)
             workflow_executed = bool(executions)
             if workflow_executed and not selection_error and out.choices[0].finish_reason in ("stop", "length"):
-                completed = [{
-                    "name": item["name"], "arguments": item["arguments"],
-                    "result": {key: value for key, value in item["result"].items() if key in {
-                        "error", "source_id", "parent_source_id", "frequency", "total_rows", "chart_type", "panels",
-                        "title", "aggregation", "x_column", "y_column"}},
-                } for item in executions if isinstance(item["result"], dict)]
+                completed = completed_executions(executions)
                 mismatch = await review_tool_call(client, last_question, "completed_workflow",
-                                                 {"executions": completed, "answer": answer}, sources, active_source_id)
+                                                 {"executions": completed, "answer": answer}, sources, active_source_id, review_dialogue)
                 workflow_checks += 1
                 if mismatch:
                     if tools_enabled and workflow_checks == 1:
@@ -213,12 +227,16 @@ async def call_llm(
                             {"role": "assistant", "content": answer},
                             {"role": "system", "content": "The requested workflow is incomplete. " + mismatch
                              + " Execute only the missing requested steps with native tools on the correct source. "
-                             "Do not repeat completed transformations or claim that unexecuted steps finished."},
+                             "Correct mismatched calculations on their parent_source_id, not on the derived result. "
+                             "Preserve already-correct transformations and do not claim unexecuted steps finished."},
                         ])
                         continue
                     notice = ("Не все запрошенные операции завершены. " if russian
                               else "Some requested operations remain incomplete. ") + mismatch
                     return notice
+            query_answer = render_query_results(executions, russian)
+            if query_answer and out.choices[0].finish_reason in ("stop", "length"):
+                return query_answer
             if out.choices[0].finish_reason == "length":
                 return await continue_answer(client, working_messages, answer)
             if out.choices[0].finish_reason != "stop":
@@ -229,7 +247,7 @@ async def call_llm(
                 return ("Не удалось выполнить корректный вызов инструмента. Повторите запрос или уточните параметры."
                         if russian else "Could not execute a valid tool call. Retry or clarify the parameters.")
             if use_tools and sources and not executions:
-                mismatch = await review_tool_call(client, last_question, "unexecuted_answer", {"answer": answer}, sources, active_source_id)
+                mismatch = await review_tool_call(client, last_question, "unexecuted_answer", {"answer": answer}, sources, active_source_id, review_dialogue)
                 if mismatch:
                     if tools_enabled and not repaired_draft:
                         repaired_draft = True
@@ -264,7 +282,7 @@ async def call_llm(
             "tool_calls": tool_calls,
         })
 
-        token_count = await run_in_threadpool(count_tokens, working_messages, tools)
+        token_count = await run_in_threadpool(count_tokens, working_messages, MODEL_TOOLS)
         context_exceeded = token_count > settings.MAX_CONTEXT_TOKENS - settings.MAX_RESPONSE_TOKENS
         for tool_call in message.tool_calls:
             executed_arguments = {}
@@ -287,15 +305,21 @@ async def call_llm(
                     args = json.loads(tool_call.function.arguments)
                     if not isinstance(args, dict):
                         raise ValueError("Tool arguments must be a JSON object")
+                    contract = next(t["function"]["parameters"] for t in tools if t["function"]["name"] == name)
+                    missing = [key for key in contract.get("required", []) if key not in args]
+                    if missing:
+                        raise ValueError("Не переданы обязательные параметры: " + ", ".join(missing))
                     executed_arguments = dict(args)
-                    if selection_error and name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period", "build_dashboard", "build_chart"}:
+                    if selection_error and name in (TRANSFORM_TOOLS - ANALYTIC_TOOLS) | {"join_tables", "get_rows_by_period", "build_dashboard", "build_chart"}:
                         raise DataSelectionError("Требуется уточнение после ошибки выбора данных: " + selection_error)
-                    if name in TRANSFORM_TOOLS | {"join_tables", "get_rows_by_period", "build_dashboard", "build_chart"}:
+                    # SELECT cannot modify the source. Validate it in the engine,
+                    # then review the actual completed calculation below.
+                    if name in (TRANSFORM_TOOLS - ANALYTIC_TOOLS) | {"join_tables", "get_rows_by_period", "build_dashboard", "build_chart"}:
                         review_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False), active_source_id,
                                       tuple(source["id"] for source in sources))
                         if review_key not in operation_reviews:
                             operation_reviews[review_key] = await review_tool_call(
-                                client, last_question, name, args, sources, active_source_id)
+                                client, last_question, name, args, sources, active_source_id, review_dialogue)
                         mismatch = operation_reviews[review_key]
                         if mismatch:
                             raise ValueError(mismatch)
@@ -346,7 +370,8 @@ async def call_llm(
                         result = {key: value for key, value in result.items() if key != "image_base64"}
 
                 except DataSelectionError as exc:
-                    selection_error = selection_error or str(exc)
+                    if name not in ANALYTIC_TOOLS:
+                        selection_error = selection_error or str(exc)
                     result = {"error": str(exc)}
                 except (ValueError, TypeError) as exc:
                     result = {"error": str(exc)}
@@ -365,7 +390,7 @@ async def call_llm(
                 "content": json.dumps(result, ensure_ascii=False),
             }
             if not context_exceeded:
-                token_count = await run_in_threadpool(count_tokens, working_messages + [tool_message], tools)
+                token_count = await run_in_threadpool(count_tokens, working_messages + [tool_message], MODEL_TOOLS)
                 if token_count > settings.MAX_CONTEXT_TOKENS - settings.MAX_RESPONSE_TOKENS:
                     context_exceeded = True
                     tool_message["content"] = json.dumps({
@@ -377,6 +402,20 @@ async def call_llm(
             if grounded:
                 return grounded + "\n\n" + CONTEXT_LIMIT_MESSAGE
             return await answer_context_limit(client, working_messages)
+        # A parameterized metric already produces a complete answer. Check it
+        # against the user's full request without an extra numerical paraphrase.
+        # Missing charts or other deliverables return to the regular tool loop.
+        candidate = render_query_results(executions, russian)
+        if (candidate and executions[-1]["name"] in ANALYTIC_TOOLS - {"query_dataset"}
+                and "error" not in executions[-1]["result"] and not selection_error and workflow_checks == 0):
+            mismatch = await review_tool_call(client, last_question, "completed_workflow",
+                {"executions": completed_executions(executions), "answer": candidate}, sources, active_source_id, review_dialogue)
+            workflow_checks += 1
+            if not mismatch:
+                return candidate
+            working_messages.append({"role": "system", "content": "The requested workflow is incomplete. " + mismatch
+                + " Execute missing steps; correct mismatched calculations on their parent_source_id, not the derived result. "
+                "Preserve already-correct calculations."})
 
 
 async def compact_context(

@@ -3,14 +3,15 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import HTTPException
-from transformers import AutoTokenizer
 
 from app.config import settings
+from app.agent.messages import normalize_messages
 
 
 @lru_cache(maxsize=1)
 def load_tokenizer(path: str):
     try:
+        from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True, trust_remote_code=False)
         if not tokenizer.chat_template:
             raise ValueError("The tokenizer has no chat template")
@@ -28,7 +29,7 @@ def count_tokens(messages: list[dict], tools: list[dict] | None = None, continue
         path = Path(__file__).resolve().parents[2] / path
     tokenizer = load_tokenizer(str(path.resolve()))
     formatted = []
-    for message in messages:
+    for message in normalize_messages(messages):
         item = dict(message)
         if item.get("tool_calls"):
             item["tool_calls"] = []

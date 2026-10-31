@@ -1,6 +1,7 @@
 import ChatThread from "./ChatThread";
 import ChatComposer from "./ChatComposer";
-import WorkspacePlaceholder from "./WorkspacePlaceholder";
+import DashboardLibrary from "./DashboardLibrary";
+import DatabaseConnector from "./DatabaseConnector";
 import SourcesPanel from "./SourcesPanel";
 
 export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
@@ -20,6 +21,8 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
           onReload={workspace.loadChat}
         />
         <ChatComposer
+          stopping={workspace.activeChat?.stopping ?? false}
+          onStop={workspace.activeChat?.pending ? () => workspace.stopRequest(workspace.activeId) : undefined}
           key={workspace.activeId ?? "empty"}
           pending={
             (workspace.activeChat?.pending || workspace.activeChat?.loading) ??
@@ -36,9 +39,8 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
         className="panel"
         hidden={tab !== "dash"}
       >
-        <WorkspacePlaceholder icon="grid" title="Dashboard">
-          Раздел появится позже. Здесь будут сводки по проектам и активности.
-        </WorkspacePlaceholder>
+        {workspace.demo ? <p>Войдите в аккаунт, чтобы создавать и сохранять дашборды.</p> :
+          <DashboardLibrary visible={tab === "dash"} chats={workspace.chats} />}
       </section>
       <section
         role="tabpanel"
@@ -48,6 +50,7 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
         hidden={tab !== "data"}
       >
         <SourcesPanel chat={workspace.activeChat} />
+        {tab === "data" && !workspace.demo && <DatabaseConnector onConnect={workspace.connectSource} />}
       </section>
     </div>
   );

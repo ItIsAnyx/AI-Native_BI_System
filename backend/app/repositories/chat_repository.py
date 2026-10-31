@@ -1,10 +1,11 @@
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 
 from app.database.db import SessionLocal
-from app.database.models import Artifact, ChatHistory, Source
+from app.services.cancellation import checkpoint
+from app.database.models import Artifact, ChatHistory, Source, ProjectChat
 
 
 def _owned_chat(db, chat_id: UUID, user_id: UUID) -> ChatHistory:
@@ -25,6 +26,7 @@ def create_chat(user_id: UUID, title: str = "Новый чат") -> UUID:
     with SessionLocal() as db:
         chat = ChatHistory(user_id=user_id, title=title[:80])
         db.add(chat)
+        checkpoint()
         db.commit()
         return chat.id
 
@@ -32,8 +34,9 @@ def create_chat(user_id: UUID, title: str = "Новый чат") -> UUID:
 def list_chats(user_id: UUID) -> list[dict]:
     with SessionLocal() as db:
         rows = db.execute(select(
-            ChatHistory.id, ChatHistory.title, ChatHistory.created_at, ChatHistory.updated_at,
-        ).where(ChatHistory.user_id == user_id).order_by(ChatHistory.updated_at.desc())).mappings()
+            ChatHistory.id, ChatHistory.title, ChatHistory.created_at, ChatHistory.updated_at, ProjectChat.project_id,
+        ).outerjoin(ProjectChat, ProjectChat.chat_id == ChatHistory.id)
+          .where(ChatHistory.user_id == user_id).order_by(ChatHistory.updated_at.desc())).mappings()
         return [dict(row) for row in rows]
 
 
@@ -80,12 +83,14 @@ def save_chat_state(
     new_sources: list[dict] | None = None,
 ) -> None:
     with SessionLocal() as db:
+        first_question = next((m["content"] for m in chat_history if m["role"] == "user"), "Новый чат")
         result = db.execute(update(ChatHistory).where(
             ChatHistory.id == chat_id, ChatHistory.user_id == user_id, ChatHistory.version == version,
         ).values(
             chat_history=chat_history, active_context=active_context,
             active_source_id=UUID(active_source_id) if active_source_id else None,
             version=version + 1,
+            title=case((ChatHistory.title == "Новый чат", first_question[:80]), else_=ChatHistory.title),
         ))
         if result.rowcount != 1:
             raise HTTPException(status_code=409, detail="Chat changed during this request. Reload it and retry")
@@ -95,6 +100,7 @@ def save_chat_state(
             db.add(Source(chat_id=chat_id, **source))
         for artifact in artifacts or []:
             db.add(Artifact(chat_id=chat_id, **artifact))
+        checkpoint()
         db.commit()
 
 

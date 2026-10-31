@@ -48,3 +48,17 @@ class Artifact(Base):
     mime_type = Column(String(100), nullable=False, default="image/png")
     details = Column(JSON().with_variant(JSONB, "postgresql"), nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(40), nullable=False)
+
+
+class ProjectChat(Base):
+    # Separate membership table preserves existing chat_history schemas without ALTER.
+    __tablename__ = "project_chats"
+    chat_id = Column(Uuid(as_uuid=True), ForeignKey("chat_history.id", ondelete="CASCADE"), primary_key=True)
+    project_id = Column(Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
