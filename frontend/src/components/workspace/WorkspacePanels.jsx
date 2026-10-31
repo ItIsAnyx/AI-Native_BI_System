@@ -2,9 +2,10 @@ import ChatThread from "./ChatThread";
 import ChatComposer from "./ChatComposer";
 import DashboardLibrary from "./DashboardLibrary";
 import DatabaseConnector from "./DatabaseConnector";
+import DashboardPanel from "./DashboardPanel";
 import SourcesPanel from "./SourcesPanel";
 
-export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
+export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage, notify }) {
   return (
     <div className="panels">
       <section
@@ -39,8 +40,11 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
         className="panel"
         hidden={tab !== "dash"}
       >
-        {workspace.demo ? <p>Войдите в аккаунт, чтобы создавать и сохранять дашборды.</p> :
-          <DashboardLibrary visible={tab === "dash"} chats={workspace.chats} />}
+        <DashboardPanel chat={workspace.activeChat} onOpenMessage={onOpenMessage} />
+        <details>
+          <summary>Дашборды из всех чатов</summary>
+          <DashboardLibrary visible={tab === "dash"} chats={workspace.chats} />
+        </details>
       </section>
       <section
         role="tabpanel"
@@ -50,7 +54,7 @@ export default function WorkspacePanels({ tab, workspace, onSend, notify }) {
         hidden={tab !== "data"}
       >
         <SourcesPanel chat={workspace.activeChat} />
-        {tab === "data" && !workspace.demo && <DatabaseConnector onConnect={workspace.connectSource} />}
+        {tab === "data" && <DatabaseConnector onConnect={workspace.connectSource} />}
       </section>
     </div>
   );

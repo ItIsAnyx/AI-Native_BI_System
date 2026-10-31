@@ -127,6 +127,7 @@ export function workspaceReducer(state, action) {
             ? {
                 ...c,
                 pending: true,
+                uploadProgress: null,
                 messages: c.messages.at(-1)?.error
                   ? c.messages.slice(0, -1)
                   : c.messages,
@@ -134,6 +135,20 @@ export function workspaceReducer(state, action) {
             : c,
         ),
       };
+    case "upload-progress":
+      return patchChat(state, action.chatId, { uploadProgress: action.progress });
+    // Ответ найден на сервере после обрыва связи или таймаута.
+    case "chat-recovered":
+      return patchChat(state, action.chatId, {
+        pending: false,
+        uploadProgress: null,
+        loaded: true,
+        loading: false,
+        loadError: false,
+        serverId: action.serverId,
+        messages: action.messages,
+        sources: action.sources,
+      });
     case "reply-received":
       return {
         ...state,
@@ -142,6 +157,7 @@ export function workspaceReducer(state, action) {
             ? {
                 ...c,
                 pending: false,
+                uploadProgress: null,
                 serverId: action.serverId ?? c.serverId,
                 sources: action.sources ?? c.sources,
                 messages: [...c.messages, action.message],

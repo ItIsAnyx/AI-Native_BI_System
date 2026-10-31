@@ -12,12 +12,10 @@ import Sidebar from "../components/workspace/Sidebar";
 import WorkspaceTabs from "../components/workspace/WorkspaceTabs";
 import WorkspaceDialogs from "../components/workspace/WorkspaceDialogs";
 
-const demoUser = { id: "demo", login: "Анна Крылова", email: "demo@aster.app" };
-
-export default function Workspace({ demo = false }) {
+export default function Workspace() {
   const { user, logout } = useAuth();
   const navigate = useTransitionNavigate();
-  const workspace = useWorkspace(demo);
+  const workspace = useWorkspace();
   const { theme, toggleTheme } = useTheme();
   const blobs = useRef(null);
   useBlobsBackground(blobs, theme);
@@ -55,6 +53,14 @@ export default function Workspace({ demo = false }) {
     closeDrawer();
     main.current?.focus();
   }
+  // «Показать в чате»: переключаемся на вкладку чата и прокручиваем к сообщению.
+  function openMessage(messageId) {
+    setTab("chat");
+    requestAnimationFrame(() => {
+      const node = document.getElementById(`msg-${messageId}`);
+      node?.scrollIntoView({ block: "center" });
+    });
+  }
   async function send(text, files = []) {
     try {
       return await workspace.sendMessage(text, files);
@@ -67,7 +73,7 @@ export default function Workspace({ demo = false }) {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      if (!demo) await logout();
+      await logout();
       navigate("/login", { replace: true });
     } catch {
       notify("Не удалось выйти. Проверьте подключение и повторите попытку.");
@@ -80,8 +86,7 @@ export default function Workspace({ demo = false }) {
       <canvas className="bg-blobs" ref={blobs} aria-hidden="true" />
       <Sidebar
         workspace={workspace}
-        user={demo ? demoUser : user}
-        demo={demo}
+        user={user}
         query={query}
         onQuery={setQuery}
         open={drawer}
@@ -102,8 +107,7 @@ export default function Workspace({ demo = false }) {
         <WorkspaceHeader
           title={workspace.activeChat?.title}
           projectName={project?.name}
-          demo={demo}
-          drawer={drawer}
+            drawer={drawer}
           onOpenMenu={() => setDrawer(true)}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -113,6 +117,7 @@ export default function Workspace({ demo = false }) {
           tab={tab}
           workspace={workspace}
           onSend={send}
+          onOpenMessage={openMessage}
           notify={notify}
         />
       </main>

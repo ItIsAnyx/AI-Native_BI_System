@@ -10,7 +10,7 @@
   --a-bg-1: #fafafc;
   --a-bg-2: #f3f0fa;
   --a-bg-3: #ede9fe;
-  --a-card: rgba(255, 255, 255, 0.72);
+  --a-card: #fdfcff;
   --a-card-border: rgba(79, 70, 229, 0.18);
   --a-card-shadow: 0 30px 80px -10px rgba(79, 70, 229, 0.18), 0 4px 12px rgba(31, 29, 43, 0.04);
   --a-field: rgba(255, 255, 255, 0.85);
@@ -56,7 +56,7 @@
   --a-bg-1: #07060f;
   --a-bg-2: #0b0817;
   --a-bg-3: #0f0a1f;
-  --a-card: rgba(20, 20, 40, 0.55);
+  --a-card: #11102a;
   --a-card-border: rgba(196, 181, 253, 0.18);
   --a-card-shadow: 0 30px 80px -10px rgba(139, 92, 246, 0.35), 0 0 0 1px rgba(139, 92, 246, 0.15) inset;
   --a-field: rgba(255, 255, 255, 0.05);
@@ -160,8 +160,6 @@
   max-width: 440px;
   padding: 48px 44px 40px;
   background: var(--a-card);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
   border: 1px solid var(--a-card-border);
   border-radius: 24px;
   box-shadow: var(--a-card-shadow);
@@ -545,8 +543,11 @@
 @keyframes auth-bg-in {
   from { opacity: 0; }
 }
+/* Окно формы всегда непрозрачное: прозрачность прыгает с 0 до 1 в самом начале,
+   дальше окно только слегка сдвигается и масштабируется, и точки фона не просвечивают. */
 @keyframes auth-card-in {
-  from { opacity: 0; translate: 0 14px; scale: 0.98; }
+  0% { opacity: 0; translate: 0 14px; scale: 0.98; }
+  0.1%, 100% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .login .bg-blobs,

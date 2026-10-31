@@ -2,8 +2,9 @@ import axios from "axios";
 import { privateApi } from "../privateApi";
 
 const id = () => crypto.randomUUID();
-// A dashboard runs several model calls, each with its own backend timeout.
-const AGENT_TIMEOUT_MS = (Number(import.meta.env.VITE_AGENT_TIMEOUT_SEC) || 30 * 60) * 1000;
+// Один запрос может выполнять несколько обращений к модели.
+const AGENT_TIMEOUT_MS =
+  (Number(import.meta.env.VITE_AGENT_TIMEOUT_SEC) || 30 * 60) * 1000;
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 // Адрес файла с сервера (графики, CSV). Относительный путь работает через прокси Vite.
@@ -69,6 +70,27 @@ export const workspaceApi = {
     return rows.map(toChat);
   },
 
+  // После обрыва связи: ответ мог сохраниться. Ищем его в истории (для нового
+  // чата сначала находим его в списке по заголовку = первые 80 символов запроса).
+  async findReply({ serverId, text, knownIds = [], expected }) {
+    let id = serverId;
+    if (!id) {
+      const wanted = text.trim().slice(0, 80);
+      const known = new Set(knownIds);
+      const rows = await privateApi.get("/agent/chats");
+      id = rows.find((r) => !known.has(r.id) && r.title.trim() === wanted)?.id;
+      if (!id) return null;
+    }
+    const loaded = await workspaceApi.loadChat(id);
+    const { messages } = loaded;
+    const last = messages.at(-1);
+    const found =
+      messages.length >= expected + 1 &&
+      last?.role === "assistant" &&
+      messages.at(-2)?.text?.trim() === text.trim();
+    return found ? { serverId: id, ...loaded } : null;
+  },
+
   async loadChat(serverId) {
     const [history, sourcesData] = await Promise.all([
       privateApi.get(`/agent/chats/${serverId}/history`),
@@ -94,7 +116,10 @@ export const workspaceApi = {
   },
 
   // POST /agent/response (multipart/form-data). Без serverId сервер сам создаёт чат.
-  async sendMessage({ text, file = null, serverId = null, requestId }, { signal } = {}) {
+  async sendMessage(
+    { text, file = null, serverId = null, requestId },
+    { signal, onUploadProgress } = {},
+  ) {
     const form = new FormData();
     form.append(
       "payload",
@@ -104,6 +129,7 @@ export const workspaceApi = {
     const data = await privateApi.post("/agent/response", form, {
       signal,
       timeout: AGENT_TIMEOUT_MS,
+      onUploadProgress: file ? onUploadProgress : undefined,
     });
     return {
       message: {
