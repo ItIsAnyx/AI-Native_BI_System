@@ -20,7 +20,11 @@ export function useWorkspace() {
   useEffect(() => {
     const pending = requests.current;
     return () => {
-      pending.forEach((controller) => controller.abort());
+      pending.forEach((controller) => {
+        controller.abort();
+        if (controller.serverId && controller.requestId)
+          void workspaceApi.cancelRequest(controller.serverId, controller.requestId).catch(() => {});
+      });
       pending.clear();
     };
   }, []);
@@ -28,10 +32,9 @@ export function useWorkspace() {
   useEffect(() => {
     let cancelled = false;
     dispatch({ type: "chats-loading" });
-    workspaceApi
-      .listChats()
-      .then((chats) => {
-        if (!cancelled) dispatch({ type: "chats-loaded", chats });
+    Promise.all([workspaceApi.listChats(), workspaceApi.listProjects()])
+      .then(([chats, projects]) => {
+        if (!cancelled) dispatch({ type: "chats-loaded", chats, projects });
       })
       .catch(() => {
         if (!cancelled) dispatch({ type: "chats-load-failed" });
@@ -62,8 +65,32 @@ export function useWorkspace() {
     dispatch({ type: "chat-created", chat });
     return chat;
   }
+  async function stopRequest(chatId) {
+    const controller = requests.current.get(chatId);
+    if (!controller) return;
+    if (controller.stopPromise) return controller.stopPromise;
+    controller.stopping = true;
+    controller.abort();
+    dispatch({ type: "reply-stopping", chatId, stopping: true });
+    controller.stopPromise = (async () => {
+      try {
+        if (controller.serverId && controller.requestId)
+          await workspaceApi.cancelRequest(controller.serverId, controller.requestId);
+        if (requests.current.get(chatId) === controller) {
+          requests.current.delete(chatId);
+          dispatch({ type: "reply-cancelled", chatId, id: crypto.randomUUID() });
+        }
+      } catch (error) {
+        controller.stopPromise = null;
+        dispatch({ type: "reply-stopping", chatId, stopping: false });
+        throw error;
+      }
+    })();
+    return controller.stopPromise;
+  }
   async function deleteChat(id) {
     const chat = state.chats.find((c) => c.id === id);
+    await stopRequest(id);
     await api.deleteChat(id, { serverId: chat?.serverId ?? null });
     requests.current.get(id)?.abort();
     requests.current.delete(id);
@@ -74,6 +101,8 @@ export function useWorkspace() {
     dispatch({ type: "chat-moved", chatId, projectId });
   }
   async function deleteProject(id, deleteChats) {
+    if (deleteChats)
+      await Promise.all(state.chats.filter((c) => c.projectId === id).map((c) => stopRequest(c.id)));
     await api.deleteProject(id, { deleteChats });
     if (deleteChats)
       state.chats
@@ -84,8 +113,16 @@ export function useWorkspace() {
         });
     dispatch({ type: "project-deleted", id, deleteChats });
   }
+  async function connectSource(body) {
+    const chat = activeChat ?? (await createChat());
+    if (chat.pending) throw new Error("Дождитесь ответа агента.");
+    await api.connectSource(chat.serverId, body);
+    const loaded = await api.loadChat(chat.serverId);
+    dispatch({ type: "chat-loaded", id: chat.id, ...loaded });
+  }
   // Проверяет, не сохранился ли ответ на сервере (после таймаута или обрыва сети).
-  async function recoverReply(chatId, text) {
+  async function recoverReply(chatId, text, controller) {
+    if (controller.signal.aborted || requests.current.get(chatId) !== controller) return false;
     const current = latest.current.chats.find((c) => c.id === chatId);
     if (!current) return false;
     try {
@@ -95,7 +132,7 @@ export function useWorkspace() {
         knownIds: latest.current.chats.map((c) => c.serverId).filter(Boolean),
         expected: current.messages.filter((m) => !m.error).length,
       });
-      if (!found) return false;
+      if (!found || controller.signal.aborted || requests.current.get(chatId) !== controller) return false;
       dispatch({
         type: "chat-recovered",
         chatId,
@@ -111,45 +148,52 @@ export function useWorkspace() {
   function receiveReply(chat, message) {
     const chatId = chat.id;
     const controller = new AbortController();
+    controller.requestId = crypto.randomUUID();
+    controller.serverId = chat.serverId;
     requests.current.set(chatId, controller);
     api
       .sendMessage(
         {
+          requestId: controller.requestId,
           text: message.text,
           file: message.files?.find((f) => f instanceof File) ?? null,
           serverId: chat.serverId ?? null,
         },
         {
           signal: controller.signal,
-          onUploadProgress: (event) =>
+          onUploadProgress: (event) => {
+            if (requests.current.get(chatId) !== controller || controller.signal.aborted) return;
             dispatch({
               type: "upload-progress",
               chatId,
               progress: event.total ? event.loaded / event.total : null,
-            }),
+            });
+          },
         },
       )
-      .then(({ message: reply, serverId, sources }) =>
-        dispatch({ type: "reply-received", chatId, message: reply, serverId, sources }),
-      )
+      .then(({ message: reply, serverId, sources }) => {
+        if (requests.current.get(chatId) === controller && !controller.signal.aborted)
+          dispatch({ type: "reply-received", chatId, message: reply, serverId, sources });
+      })
       .catch(async (error) => {
-        if (isCanceled(error)) return;
+        if (requests.current.get(chatId) !== controller || controller.signal.aborted || isCanceled(error)) return;
+        if (controller.serverId && controller.requestId)
+          await workspaceApi.cancelRequest(controller.serverId, controller.requestId).catch(() => {});
+        if (requests.current.get(chatId) !== controller || controller.signal.aborted) return;
         const uncertain = isUncertainError(error);
-        if (uncertain && (await recoverReply(chatId, message.text))) return;
+        if (uncertain && (await recoverReply(chatId, message.text, controller))) return;
+        if (requests.current.get(chatId) !== controller || controller.signal.aborted) return;
         dispatch({
           type: "reply-received",
           chatId,
           message: {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            error: true,
-            recoverable: uncertain,
-            errorText: getAgentErrorText(error),
+            id: crypto.randomUUID(), role: "assistant", error: true,
+            recoverable: uncertain, errorText: getAgentErrorText(error),
           },
         });
       })
       .finally(() => {
-        if (requests.current.get(chatId) === controller)
+        if (!controller.stopping && requests.current.get(chatId) === controller)
           requests.current.delete(chatId);
       });
   }
@@ -170,9 +214,8 @@ export function useWorkspace() {
   }
   function reloadChats() {
     dispatch({ type: "chats-loading" });
-    workspaceApi
-      .listChats()
-      .then((chats) => dispatch({ type: "chats-loaded", chats }))
+    Promise.all([workspaceApi.listChats(), workspaceApi.listProjects()])
+      .then(([chats, projects]) => dispatch({ type: "chats-loaded", chats, projects }))
       .catch(() => dispatch({ type: "chats-load-failed" }));
   }
   async function sendMessage(text, files = []) {
@@ -216,7 +259,7 @@ export function useWorkspace() {
     if (chat.messages.at(-1)?.recoverable) {
       const controller = new AbortController();
       requests.current.set(chat.id, controller);
-      recoverReply(chat.id, message.text)
+      recoverReply(chat.id, message.text, controller)
         .then((found) => {
           if (!found && !controller.signal.aborted) receiveReply(chat, message);
         })
@@ -242,6 +285,8 @@ export function useWorkspace() {
     reloadChats,
     toggleProject: (id) => dispatch({ type: "project-toggled", id }),
     sendMessage,
+    stopRequest,
     retry,
+    connectSource,
   };
 }

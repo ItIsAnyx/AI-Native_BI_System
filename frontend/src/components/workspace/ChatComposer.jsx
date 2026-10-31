@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "../common/Icon";
 import { MAX_FILE_MB } from "../../features/workspace/agentErrors";
 
-export default function ChatComposer({ pending, onSend, notify }) {
+export default function ChatComposer({ pending, stopping, onStop, onSend, notify }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -111,14 +111,20 @@ export default function ChatComposer({ pending, onSend, notify }) {
             hidden
             onChange={attach}
           />
-          <button
+          {pending && onStop ? <button type="button" className="send-btn stop-btn" disabled={stopping}
+            aria-label={stopping ? "Останавливаем ответ" : "Остановить ответ"}
+            title={stopping ? "Останавливаем ответ…" : "Остановить ответ"}
+            aria-busy={stopping}
+            onClick={() => onStop().catch(() => notify("Не удалось подтвердить отмену. Повторите остановку."))}>
+            <Icon name="stop" />
+          </button> : <button
             type="submit"
             className="send-btn"
             aria-label="Отправить сообщение"
             disabled={!text.trim() || pending || submitting}
           >
             <Icon name="send" />
-          </button>
+          </button>}
         </div>
       </form>
       <p className="muted small center disclaimer">

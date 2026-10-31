@@ -2,6 +2,7 @@
 import html
 import json
 import re
+from app.tools.tools import ANALYTIC_TOOLS
 
 
 TABLE_TOOLS = {"get_date_range", "group_by_time", "group_dataset", "clean_missing_values", "drop_columns", "drop_duplicates",
@@ -29,6 +30,34 @@ def _table(rows):
     return ["| " + " | ".join(_cell(key) for key in columns) + " |",
             "| " + " | ".join("---" for _ in columns) + " |",
             *("| " + " | ".join(_cell(row.get(key)) for key in columns) + " |" for row in rows)]
+
+
+def render_query_results(executions, russian=True):
+    queries = [item for item in executions if item["name"] in ANALYTIC_TOOLS]
+    if not queries:
+        return None
+    if "error" in queries[-1]["result"]:
+        return ("Расчёт не выполнен. Уточните названия столбцов и условия запроса."
+                if russian else "The calculation failed. Clarify the column names and query conditions.")
+    for index, item in enumerate(executions):
+        if "error" in item["result"] and not any(
+            (later["name"] == item["name"] or item["name"] in ANALYTIC_TOOLS and later["name"] in ANALYTIC_TOOLS)
+            and "error" not in later["result"] for later in executions[index + 1:]):
+            return None
+    result = queries[-1]["result"]
+    lines = [(f"Расчёт по {result['input_rows']:,} строкам источника." if russian
+              else f"Calculated from {result['input_rows']:,} source rows."), ""]
+    labels = result.get("column_labels", {}) if russian else {}
+    rows = [{labels.get(k, k): v for k, v in row.items()} for row in result["rows"]]
+    lines += _table(rows) if rows else ["По заданным условиям строк нет." if russian else "No matching rows."]
+    if result.get("calculation_note") and russian:
+        lines += ["", result["calculation_note"]]
+    if result.get("source_warnings"):
+        lines += ["", ("Замечания: " if russian else "Notes: ") + " ".join(_cell(w) for w in result["source_warnings"])]
+    if result["truncated"]:
+        lines += ["", (f"Показано {result['returned_count']} из {result['total_rows']} строк. Полный результат сохранён в источниках чата."
+                         if russian else f"Showing {result['returned_count']} of {result['total_rows']} rows. Full results are saved in chat sources.")]
+    return "\n".join(lines)
 
 
 def render_tool_results(executions, russian=True):

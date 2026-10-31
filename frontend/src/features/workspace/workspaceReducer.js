@@ -24,8 +24,12 @@ export function workspaceReducer(state, action) {
         ...state,
         chatsLoading: false,
         chatsError: false,
+        projects: action.projects ?? state.projects,
         chats: [
-          ...state.chats,
+          ...state.chats.map((chat) => {
+            const row = action.chats.find((item) => item.serverId === chat.serverId);
+            return row ? { ...chat, title: row.title, projectId: row.projectId } : chat;
+          }),
           ...action.chats.filter((c) => !known.has(c.serverId)),
         ],
       };
@@ -161,6 +165,14 @@ export function workspaceReducer(state, action) {
             : c,
         ),
       };
+    case "reply-stopping":
+      return patchChat(state, action.chatId, { stopping: action.stopping });
+    case "reply-cancelled":
+      return patchChat(state, action.chatId, {
+        pending: false, stopping: false,
+        messages: [...(state.chats.find((c) => c.id === action.chatId)?.messages ?? []),
+          { id: action.id, role: "assistant", text: "Запрос отменён." }],
+      });
     default:
       return state;
   }

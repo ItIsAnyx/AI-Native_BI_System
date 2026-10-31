@@ -1,5 +1,5 @@
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,7 @@ class MessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=settings.MAX_REQUEST_LENGTH)
     chat_id: UUID | None = None
     source_id: UUID | None = None
+    request_id: UUID = Field(default_factory=uuid4)
 
 
 class ChartArtifact(BaseModel):

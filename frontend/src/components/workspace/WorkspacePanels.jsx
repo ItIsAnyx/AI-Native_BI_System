@@ -1,5 +1,7 @@
 import ChatThread from "./ChatThread";
 import ChatComposer from "./ChatComposer";
+import DashboardLibrary from "./DashboardLibrary";
+import DatabaseConnector from "./DatabaseConnector";
 import DashboardPanel from "./DashboardPanel";
 import SourcesPanel from "./SourcesPanel";
 
@@ -20,6 +22,8 @@ export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage,
           onReload={workspace.loadChat}
         />
         <ChatComposer
+          stopping={workspace.activeChat?.stopping ?? false}
+          onStop={workspace.activeChat?.pending ? () => workspace.stopRequest(workspace.activeId) : undefined}
           key={workspace.activeId ?? "empty"}
           pending={
             (workspace.activeChat?.pending || workspace.activeChat?.loading) ??
@@ -37,6 +41,10 @@ export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage,
         hidden={tab !== "dash"}
       >
         <DashboardPanel chat={workspace.activeChat} onOpenMessage={onOpenMessage} />
+        <details>
+          <summary>Дашборды из всех чатов</summary>
+          <DashboardLibrary visible={tab === "dash"} chats={workspace.chats} />
+        </details>
       </section>
       <section
         role="tabpanel"
@@ -46,6 +54,7 @@ export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage,
         hidden={tab !== "data"}
       >
         <SourcesPanel chat={workspace.activeChat} />
+        {tab === "data" && <DatabaseConnector onConnect={workspace.connectSource} />}
       </section>
     </div>
   );

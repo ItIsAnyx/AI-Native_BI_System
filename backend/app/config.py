@@ -44,5 +44,11 @@ class Settings(BaseSettings):
     MAX_FILE_ROWS: int = Field(default=100000, gt=0)
     MAX_TOOL_CALLS: int = Field(default=5, gt=0)
     STORAGE_DIR: Path = ENV_PATH.parent / "storage"
+    # Named analytical PostgreSQL connections. Credentials never go to the model or browser.
+    ANALYTICS_CONNECTIONS: dict[str, str] = Field(default_factory=dict)
+    ANALYTICS_TIMEOUT_MS: int = Field(default=30000, ge=1000, le=300000)
+    QUERY_TIMEOUT_SECONDS: float = Field(default=30, gt=0, le=300)
+    QUERY_MEMORY_MB: int = Field(default=512, ge=64, le=4096)
+    QUERY_MAX_ROWS: int = Field(default=100000, ge=1, le=1000000)
 
 settings = Settings()

@@ -36,6 +36,9 @@ export default function IconSprite() {
         <symbol id="i-send" viewBox="0 0 24 24">
           <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" />
         </symbol>
+        <symbol id="i-stop" viewBox="0 0 24 24">
+          <rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor" stroke="none" />
+        </symbol>
         <symbol id="i-eye" viewBox="0 0 24 24">
           <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
           <circle cx="12" cy="12" r="2.8" />

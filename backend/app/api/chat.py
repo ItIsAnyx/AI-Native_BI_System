@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 from pydantic import ValidationError
-from starlette.concurrency import run_in_threadpool
+from app.services.cancellation import run_in_threadpool
+from app.services import cancellation
 
 from app.agent.agent import call_llm, compact_context
 from app.agent.prompts import main_model_prompt
@@ -36,14 +37,28 @@ def get_agent_user_id(request: Request) -> UUID:
 
 
 @router.post("/agent/response", response_model=MessageResponse)
-async def get_response(
-    http_request: Request,
-    payload: str = Form(...),
-    file: UploadFile | None = File(None),
-    user_id: UUID = Depends(get_agent_user_id),
-) -> MessageResponse:
+async def get_response(http_request: Request, payload: str = Form(...), file: UploadFile | None = File(None),
+                       user_id: UUID = Depends(get_agent_user_id)):
+    try:
+        parsed = MessageRequest.model_validate_json(payload)
+    except ValidationError as exc:
+        raise HTTPException(422, "Invalid payload") from exc
+    return await cancellation.supervise(http_request, (user_id, parsed.chat_id), parsed.request_id,
+        lambda: _get_response(http_request, payload, file, user_id))
+
+
+@router.post("/agent/chats/{chat_id}/cancel")
+async def cancel_request(chat_id: UUID, request_id: UUID | None = None,
+                         user_id: UUID = Depends(get_agent_user_id)):
+    await run_in_threadpool(chat_repository.get_chat_state, chat_id, user_id)
+    stopped = await cancellation.cancel(user_id, chat_id, request_id)
+    return {"cancelled": stopped}
+
+
+async def _get_response(http_request, payload, file, user_id):
     saved_files = []
     persisted = False
+    cancelled = False
     new_source = None
     user_message = None
     locked_chats = []
@@ -70,6 +85,7 @@ async def get_response(
             chat_key = (user_id, chat_id)
             running_chats.add(chat_key)
             locked_chats.append(chat_key)
+        cancellation.bind(user_id, chat_id)
         state = await run_in_threadpool(chat_repository.get_chat_state, chat_id, user_id)
         sources = state["sources"]
         active_source_id = str(request.source_id) if request.source_id else state["active_source_id"]
@@ -163,6 +179,9 @@ async def get_response(
         persisted = True
         return response
 
+    except cancellation.RequestCancelled:
+        cancelled = True
+        raise
     except APITimeoutError as exc:
         raise HTTPException(status_code=504, detail="Ollama request timed out") from exc
     except APIConnectionError as exc:
@@ -173,39 +192,40 @@ async def get_response(
             raise HTTPException(status_code=503, detail="Model not found. Check MODEL_NAME against ollama list") from exc
         raise HTTPException(status_code=502, detail="Ollama rejected the request. Check its logs") from exc
     finally:
-        try:
-            if not persisted and new_source is not None and user_message is not None:
-                try:
-                    latest = await run_in_threadpool(chat_repository.get_chat_state, chat_id, user_id)
-                    note = (
-                        "Предыдущая обработка была прервана. Загруженный CSV сохранён и доступен: "
-                        + json.dumps({"source_id": str(new_source["id"]), "filename": new_source["name"]}, ensure_ascii=False)
-                    )
-                    interrupted_context = latest["active_context"] or [{"role": "system", "content": main_model_prompt}]
-                    interrupted_context = interrupted_context + [upload_message, {"role": "assistant", "content": note}]
-                    interrupted_history = latest["chat_history"] + [user_message, {
-                        "id": str(uuid4()), "role": "assistant", "content": note,
-                        "created_at": datetime.now(timezone.utc).isoformat(), "charts": [],
-                    }]
-                    await run_in_threadpool(
-                        chat_repository.save_chat_state, chat_id, user_id, latest["version"],
-                        interrupted_history, interrupted_context, str(new_source["id"]), new_source,
-                    )
-                except Exception:
-                    logger.exception("Could not register the saved CSV after an interrupted request")
-            if not persisted:
-                for path in saved_files:
-                    if new_source is not None and path == new_source["file_path"]:
-                        continue
+        with cancellation.suspended():
+            try:
+                if not persisted and not cancelled and new_source is not None and user_message is not None:
                     try:
-                        await run_in_threadpool(chat_storage.remove_file, path)
-                    except OSError:
-                        logger.exception("Could not remove an uncommitted artifact")
-        finally:
-            for chat_key in locked_chats:
-                running_chats.discard(chat_key)
-            if file is not None:
-                await file.close()
+                        latest = await run_in_threadpool(chat_repository.get_chat_state, chat_id, user_id)
+                        note = (
+                            "Предыдущая обработка была прервана. Загруженный CSV сохранён и доступен: "
+                            + json.dumps({"source_id": str(new_source["id"]), "filename": new_source["name"]}, ensure_ascii=False)
+                        )
+                        interrupted_context = latest["active_context"] or [{"role": "system", "content": main_model_prompt}]
+                        interrupted_context = interrupted_context + [upload_message, {"role": "assistant", "content": note}]
+                        interrupted_history = latest["chat_history"] + [user_message, {
+                            "id": str(uuid4()), "role": "assistant", "content": note,
+                            "created_at": datetime.now(timezone.utc).isoformat(), "charts": [],
+                        }]
+                        await run_in_threadpool(
+                            chat_repository.save_chat_state, chat_id, user_id, latest["version"],
+                            interrupted_history, interrupted_context, str(new_source["id"]), new_source,
+                        )
+                    except Exception:
+                        logger.exception("Could not register the saved CSV after an interrupted request")
+                if not persisted:
+                    for path in saved_files:
+                        if not cancelled and new_source is not None and path == new_source["file_path"]:
+                            continue
+                        try:
+                            await run_in_threadpool(chat_storage.remove_file, path)
+                        except OSError:
+                            logger.exception("Could not remove an uncommitted artifact")
+            finally:
+                for chat_key in locked_chats:
+                    running_chats.discard(chat_key)
+                if file is not None:
+                    await file.close()
 
 
 @router.post("/agent/chats", status_code=201)
@@ -237,6 +257,17 @@ def get_chat_sources(chat_id: UUID, user_id: UUID = Depends(get_agent_user_id)):
 @router.get("/agent/sources/{source_id}/file")
 def get_source_file(source_id: UUID, user_id: UUID = Depends(get_agent_user_id)):
     source = chat_repository.get_source_file(source_id, user_id)
+    if source["type"] == "postgresql":
+        from app.tools.dataset import load_source
+        try:
+            df = load_source([{**source, "id": str(source_id)}], str(source_id))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        technical_id = df.attrs.get("technical_id_column")
+        if technical_id:
+            df = df.drop(columns=[technical_id])
+        return Response(df.to_csv(index=False), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": "attachment; filename=database_export.csv", "Cache-Control": "private, no-store"})
     return FileResponse(chat_storage.existing_file(source["file_path"]), media_type="text/csv", filename=source["name"], headers={"Cache-Control": "private, no-store"})
 
 

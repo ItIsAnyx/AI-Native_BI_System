@@ -10,10 +10,19 @@ from app.tools.preprocessing_tools import PREPROCESSING_TOOLS
 from app.tools.grouping import group_dataset, GROUP_AGGREGATIONS
 from app.tools.time_series import get_date_range, group_by_time, TIME_FREQUENCIES
 from app.tools.dashboards import build_dashboard
+from app.tools.advanced_time import ADVANCED_FUNCTIONS, ADVANCED_TOOLS
+from app.tools.scenarios import estimate_scenario, SCENARIO_TOOL
+from app.tools.query import query_dataset, QUERY_TOOL
+from app.tools.metrics import METRIC_FUNCTIONS, METRIC_TOOLS
 
-TRANSFORM_TOOLS = PREPROCESSING_TRANSFORMS | {"group_dataset", "group_by_time"}
+ANALYTIC_TOOLS = set(METRIC_FUNCTIONS) | {"query_dataset"}
+TRANSFORM_TOOLS = PREPROCESSING_TRANSFORMS | {"group_dataset", "group_by_time"} | ANALYTIC_TOOLS
 
 TOOL_FUNCTIONS = {
+    **METRIC_FUNCTIONS,
+    "query_dataset": query_dataset,
+    "estimate_scenario": estimate_scenario,
+    **ADVANCED_FUNCTIONS,
     "get_dataset_columns": get_dataset_columns,
     "get_date_range": get_date_range,
     "group_by_time": group_by_time,
@@ -254,7 +263,7 @@ tools.extend([
                 "type": "object", "properties": dict(chart_parameters["properties"]),
                 "required": list(chart_parameters["required"]), "additionalProperties": False,
             }},
-        }, "required": ["panels"], "additionalProperties": False},
+        }, "required": ["panels", "title"], "additionalProperties": False},
     }},
 ])
 
@@ -262,9 +271,22 @@ tools.extend([
 inspection_order = {"list_sources": 0, "get_dataset_columns": 1, "read_dataset_and_gain_statistics": 2, "get_date_range": 2, "group_by_time": 3}
 tools.sort(key=lambda tool: inspection_order.get(tool["function"]["name"], 4))
 
+tools.extend(ADVANCED_TOOLS)
+tools.append(SCENARIO_TOOL)
+tools.append(QUERY_TOOL)
+tools.extend(METRIC_TOOLS)
+
 for tool in tools:
     if tool["function"]["name"] not in ("list_sources", "join_tables"):
         tool["function"]["parameters"]["properties"]["source_id"] = {
             "type": "string",
-            "description": "ID CSV-источника из list_sources. Если не указан, используется активный источник чата.",
+            "description": "ID источника данных (CSV или PostgreSQL) из list_sources. Если не указан, используется активный источник чата.",
         }
+
+# The general SQL tool covers legacy filtering/aggregation primitives in one call.
+# Keep the full registry for compatibility while advertising a smaller model menu.
+MODEL_TOOL_NAMES = {"list_sources", "get_dataset_columns", "read_dataset_and_gain_statistics",
+                    "query_dataset", "join_tables", "build_chart", "build_dashboard",
+                    "analyze_seasonality", "analyze_lags", "forecast_series", "estimate_scenario"}
+MODEL_TOOL_NAMES |= set(METRIC_FUNCTIONS)
+MODEL_TOOLS = [tool for tool in tools if tool["function"]["name"] in MODEL_TOOL_NAMES]

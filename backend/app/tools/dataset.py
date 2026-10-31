@@ -1,9 +1,11 @@
 import csv
+from collections import Counter
 import json
 import math
 import re
 from io import StringIO
 import pandas as pd
+from app.services.cancellation import checkpoint
 from fastapi import HTTPException
 from app.config import settings
 from app.services import chat_storage
@@ -40,13 +42,26 @@ def read_dataset(file) -> pd.DataFrame:
             text = text.decode("utf-8-sig")
         else:
             text = text.lstrip("\ufeff")
-        try:
-            delimiter = csv.Sniffer().sniff(text[:64 * 1024], delimiters=",;\t").delimiter
-        except csv.Error:
+        # A truncated sample and commas in unit labels can fool Sniffer into
+        # splitting a semicolon file at decimal commas. Compare complete records.
+        candidates = []
+        for candidate in (",", ";", "\t"):
+            parsed = []
             try:
-                delimiter = csv.Sniffer().sniff(text.splitlines()[0], delimiters=",;\t").delimiter
-            except (csv.Error, IndexError):
-                delimiter = ","
+                for row in csv.reader(StringIO(text[:65536]), delimiter=candidate, strict=True):
+                    if row:
+                        parsed.append(row)
+                    if len(parsed) >= 32:
+                        break
+            except csv.Error:
+                pass
+            widths = Counter(map(len, parsed[1:] or parsed))
+            if widths:
+                width, matches = widths.most_common(1)[0]
+                ratio = matches / sum(widths.values())
+                if width > 1:
+                    candidates.append(((len(parsed) > 1, len(parsed[0]) == width, ratio >= .8, width if ratio >= .8 else ratio, ratio), candidate))
+        delimiter = max(candidates, key=lambda item: item[0])[1] if candidates else ","
         csv.field_size_limit(settings.MAX_FILE_SIZE_MB * 1024 * 1024)
         reader = csv.reader(StringIO(text, newline=""), delimiter=delimiter, strict=True)
         header = next(row for row in reader if row)
@@ -61,6 +76,8 @@ def read_dataset(file) -> pd.DataFrame:
                 if len(examples) < 5:
                     examples.append(f"строка {reader.line_num}: {len(row)} полей")
             rows.append(row)
+            if len(rows) % 10000 == 0:
+                checkpoint()
             if len(rows) > settings.MAX_FILE_ROWS:
                 raise HTTPException(status_code=400, detail=f"Too many rows. Max: {settings.MAX_FILE_ROWS}")
     except HTTPException:
@@ -96,7 +113,10 @@ def read_dataset(file) -> pd.DataFrame:
             try:
                 values = pd.to_numeric(values, errors="raise")
             except (ValueError, TypeError):
-                pass
+                complete = values.dropna()
+                if delimiter in (";", "\t") and complete.str.fullmatch(r"[+-]?(?:\d+(?:,\d+)?|,\d+)(?:[eE][+-]?\d+)?").all():
+                    values = pd.to_numeric(values.str.replace(",", ".", regex=False), errors="raise")
+                    warnings.append(f"Столбец {column!r}: распознана десятичная запятая.")
         df[column] = values
     technical_id = "_row_id"
     while technical_id in df.columns:
@@ -169,8 +189,11 @@ def list_sources(sources: list[dict]) -> list[dict]:
 def load_source(sources: list[dict], source_id: str | None):
     source = next((source for source in sources if source["id"] == source_id), None)
     if source is None:
-        raise ValueError("Select an available CSV source using source_id")
+        raise ValueError("Select an available data source using source_id")
     path = chat_storage.existing_file(source["file_path"])
+    if source["type"] == "postgresql":
+        from app.data.postgres_source import read_table
+        return read_table(json.loads(path.read_text(encoding="utf-8")))
     if metadata_path(path).is_file():
         return read_processed_dataset(path)
     with path.open("rb") as file:

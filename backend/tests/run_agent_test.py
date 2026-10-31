@@ -25,184 +25,29 @@ READ_TIMEOUT = float(os.getenv("TEST_READ_TIMEOUT_SECONDS", str((max_tool_calls 
 TESTS = Path(__file__).resolve().parent
 LOGS = TESTS / "logs"
 
-def save_charts(body, log_path):
-    """Keep metadata in the JSON and save image bytes next to that log."""
-    errors = []
-    if not isinstance(body, dict):
-        return errors
-    charts = body.get("charts", [])
-    if not isinstance(charts, list):
-        return ["response.charts должен быть списком"]
-    for index, chart in enumerate(charts):
-        if not isinstance(chart, dict):
-            errors.append(f"charts[{index}] должен быть объектом")
-            continue
-        encoded = chart.pop("image_base64", None)
-        try:
-            if chart.get("mime_type") != "image/png":
-                raise ValueError("ожидается mime_type=image/png")
-            if not isinstance(encoded, str):
-                raise ValueError("отсутствует image_base64")
-            png = base64.b64decode(encoded, validate=True)
-            if not png.startswith(b"\x89PNG\r\n\x1a\n"):
-                raise ValueError("неверная сигнатура PNG")
-            image_path = log_path.with_name(f"{log_path.stem}_{index}.png")
-            image_path.write_bytes(png)
-            chart["image_file"] = image_path.name
-        except (ValueError, binascii.Error, OSError) as error:
-            chart["image_error"] = str(error)
-            errors.append(f"charts[{index}]: {error}")
-    return errors
-
-
-def run_scenario(scenario, context=None, *, skip_reason=None):
-    payload = {
-        "message": scenario["message"],
-        "context": context if context is not None else [],
-    }
-
-    result = {
-        "scenario": scenario["name"],
-        "expected": scenario["expected"],
-        "started_at": datetime.now().astimezone().isoformat(),
-        "url": f"{URL}/agent/response",
-        "request": payload,
-        "file": scenario.get("file"),
-        "status_code": None,
-        "response": None,
-        "error": None,
-        "document_test": scenario.get("document_test"),
-        "kind": scenario.get("kind"),
-    }
-
-    start = time.perf_counter()
-    LOGS.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")
-    log_path = LOGS / f"{scenario['name']}_{timestamp}.json"
-
-    try:
-        if skip_reason:
-            result["skipped"] = True
-            raise ValueError(skip_reason)
-        files = None
-
-        if scenario.get("file"):
-            file_path = TESTS / scenario["file"]
-
-            files = {
-                "file": (
-                    file_path.name,
-                    file_path.read_bytes(),
-                    "text/csv",
-                )
-            }
-
-        response = requests.post(
-            result["url"],
-            headers={"BACKEND_KEY": KEY} if KEY else {},
-            data={"payload": json.dumps(payload, ensure_ascii=False)},
-            files=files,
-            timeout=(5, READ_TIMEOUT),
-        )
-
-        result["status_code"] = response.status_code
-        result["response"] = response.text
-
-        try:
-            result["response"] = response.json()
-        except ValueError:
-            pass
-
-        response.raise_for_status()
-
-    except (requests.RequestException, ValueError, OSError) as error:
-        result["error"] = str(error)
-
-    result["duration_seconds"] = round(time.perf_counter() - start, 3)
-
-    image_errors = save_charts(result["response"], log_path)
-    if image_errors:
-        result["image_errors"] = image_errors
-
-    text = json.dumps(result, ensure_ascii=False, indent=2)
-    log_path.write_text(text, encoding="utf-8")
-
-    print(text)
-    print(f"\nЛог сохранён: {log_path}")
-
-    if result["error"] is not None:
-        return None
-
-    body = result["response"]
-
-    if isinstance(body, dict) and isinstance(body.get("context"), list):
-        return body["context"]
-
-    return None
-
 def run_existing_scenarios():
-    from scenarios import SCENARIOS, DIALOGUE, LONG_CONTEXT, LONG_SCENARIO, DATASET_DIALOGUE, ATTACK_SCENARIOS, DOCUMENT_ATTACK_SCENARIOS
-
-    for scenario in SCENARIOS:
-        run_scenario(scenario)
-
-    print("\nПроверка связанного диалога")
-
-    context = []
-
-    for step in DIALOGUE:
-        context = run_scenario(step, context)
-
-        if context is None:
-            print("Диалог остановлен: не получен контекст для продолжения.")
-            break
-
-    print("\nПроверка длинного контекста")
-
-    context_size = sum(
-        len(message["content"]) for message in LONG_CONTEXT
-    )
-    print(f"Размер истории: {context_size} символов")
-
-    run_scenario(LONG_SCENARIO, LONG_CONTEXT)
-
-    print("Проверка диалога по датасету")
-
-    context = []
-
-    for step in DATASET_DIALOGUE:
-        context = run_scenario(step, context)
-
-        if context is None:
-            print("Диалог остановлен: не получен контекст.")
-            break
-
-    print("Проверка атак")
-
-    for scenario in ATTACK_SCENARIOS:
-        run_scenario(
-            scenario,
-            context=scenario.get("context"),
-        )
-
-    for scenario in DOCUMENT_ATTACK_SCENARIOS:
-        run_scenario(scenario, context=[])
+    import scenarios
+    runner = ToolRunner()
+    cases = []
+    for name in ("SCENARIOS", "DIALOGUE", "DATASET_DIALOGUE", "ATTACK_SCENARIOS", "DOCUMENT_ATTACK_SCENARIOS"):
+        group = getattr(scenarios, name, [])
+        for index, case in enumerate(group):
+            if case.get("context"):
+                raise ValueError("Клиентский context больше не поддерживается. Перенесите историю в последовательность запросов.")
+            cases.append({**case, "use_previous_context": name in {"DIALOGUE", "DATASET_DIALOGUE"} and index > 0})
+    try:
+        return runner.run(cases)
+    finally:
+        runner.session.close()
 
 
 def run_chart_scenarios():
     import scenarios
-    if not hasattr(scenarios, "CHART_SCENARIOS"):
-        raise SystemExit("Сначала выполните: py -3.12 tests/prepare_chart_dataset.py")
-    print("Проверка графиков")
-    context = None
-    for scenario in scenarios.CHART_SCENARIOS:
-        followup = scenario.get("use_previous_context", False)
-        reason = None
-        if followup and not context:
-            reason = "Нет контекста предыдущего ответа: проверка без вложения пропущена."
-        context = run_scenario(scenario, context if followup else [], skip_reason=reason)
-
-
+    runner = ToolRunner()
+    try:
+        return runner.run(scenarios.CHART_SCENARIOS)
+    finally:
+        runner.session.close()
 
 
 def prepare_tool_datasets():
@@ -257,6 +102,9 @@ TOOL_SUITES = {'grouping': 'GROUPING_SCENARIOS',
 
 
 def load_scenarios(suite):
+    if suite == "smoke":
+        from smoke_cases import prepare
+        return prepare(TESTS)
     try:
         module = importlib.import_module("scenarios")
     except ModuleNotFoundError as exc:
@@ -425,7 +273,18 @@ class ToolRunner:
                 if len(uploaded) != 1:
                     raise ValueError("Не удалось однозначно определить загруженный источник")
                 next_state["aliases"][scenario["save_source_as"]] = uploaded[0]["id"]
-            result["evaluation"] = "manual_review"
+            expected_type = scenario.get("assert_chart_type")
+            if expected_type:
+                charts = body.get("charts", [])
+                if len(charts) != 1 or charts[0].get("chart_type") != expected_type:
+                    raise ValueError(f"Ожидался один {expected_type} артефакт")
+                if charts[0].get("plotted_points") != scenario["assert_points"]:
+                    raise ValueError("Количество точек не совпало с контрольными данными")
+                if scenario.get("assert_title") and charts[0].get("title") != scenario["assert_title"]:
+                    raise ValueError("Название дашборда не совпало с запрошенным")
+                result["evaluation"] = "passed"
+            else:
+                result["evaluation"] = "manual_review"
         except (ValueError, KeyError, OSError, requests.RequestException) as exc:
             result["error"] = str(exc)
             result["evaluation"] = "skipped" if result.get("skipped") else "request_error"
@@ -464,6 +323,7 @@ class ToolRunner:
             state = self.run_scenario(scenario, state, skip_reason=reason)
         summary = {"scenario_count": len(cases), "request_count": len(self.results),
                    "manual_review": sum(result["evaluation"] == "manual_review" for result in self.results),
+                   "passed": sum(result["evaluation"] == "passed" for result in self.results),
                    "errors": sum(result["evaluation"] == "request_error" for result in self.results),
                    "skipped": sum(result["evaluation"] == "skipped" for result in self.results),
                    "note": "HTTP 200 не подтверждает правильность ответа модели. Сопоставьте response.message, sources и графики с expected."}
@@ -489,7 +349,7 @@ def run_tool_scenarios(suite="all", dry_run=False, selected_names=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Сценарии API из scenarios.py с JSON-логами и PNG.")
-    parser.add_argument("--suite", choices=("all", "charts", "existing", "tools", *TOOL_SUITES), default="all")
+    parser.add_argument("--suite", choices=("all", "charts", "existing", "tools", "smoke", *TOOL_SUITES), default="smoke")
     parser.add_argument("--prepare", action="store_true", help="Только подготовить CSV из TOOL_DATASETS, без API и модели")
     parser.add_argument("--dry-run", action="store_true", help="Проверить новые сценарии и CSV без запросов")
     parser.add_argument("--scenario", action="append", help="Запустить только указанный новый сценарий; можно повторить")
@@ -500,11 +360,18 @@ if __name__ == "__main__":
         except (ValueError, OSError, ModuleNotFoundError) as error:
             parser.error(str(error))
         raise SystemExit(0)
-    if args.suite == "tools" or args.suite in TOOL_SUITES:
+    if args.suite in ("tools", "smoke") or args.suite in TOOL_SUITES:
         raise SystemExit(run_tool_scenarios("all" if args.suite == "tools" else args.suite, args.dry_run, args.scenario))
     if args.dry_run or args.scenario:
         parser.error("--dry-run и --scenario поддерживаются набором tools и группами: " + ", ".join(TOOL_SUITES))
-    if args.suite in ("all", "existing"):
-        run_existing_scenarios()
-    if args.suite in ("all", "charts"):
-        run_chart_scenarios()
+    try:
+        failures = 0
+        if args.suite in ("all", "existing"):
+            failures |= run_existing_scenarios()
+        if args.suite in ("all", "charts"):
+            failures |= run_chart_scenarios()
+        if args.suite == "all":
+            failures |= run_tool_scenarios("all")
+        raise SystemExit(failures)
+    except (ValueError, ModuleNotFoundError, AttributeError) as error:
+        parser.error(str(error))
