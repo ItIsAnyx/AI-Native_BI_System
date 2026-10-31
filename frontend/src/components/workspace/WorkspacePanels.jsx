@@ -1,11 +1,10 @@
 import ChatThread from "./ChatThread";
 import ChatComposer from "./ChatComposer";
-import DashboardLibrary from "./DashboardLibrary";
 import DatabaseConnector from "./DatabaseConnector";
 import DashboardPanel from "./DashboardPanel";
 import SourcesPanel from "./SourcesPanel";
 
-export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage, notify }) {
+export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage, onOpenChat, notify }) {
   return (
     <div className="panels">
       <section
@@ -40,11 +39,13 @@ export default function WorkspacePanels({ tab, workspace, onSend, onOpenMessage,
         className="panel"
         hidden={tab !== "dash"}
       >
-        <DashboardPanel chat={workspace.activeChat} onOpenMessage={onOpenMessage} />
-        <details>
-          <summary>Дашборды из всех чатов</summary>
-          <DashboardLibrary visible={tab === "dash"} chats={workspace.chats} />
-        </details>
+        <DashboardPanel
+          chat={workspace.activeChat}
+          chats={workspace.chats}
+          visible={tab === "dash"}
+          onOpenMessage={onOpenMessage}
+          onOpenChat={onOpenChat}
+        />
       </section>
       <section
         role="tabpanel"

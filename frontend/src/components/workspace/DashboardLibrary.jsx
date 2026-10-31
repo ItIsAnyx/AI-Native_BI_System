@@ -1,30 +1,102 @@
 import { useEffect, useState } from "react";
+import Icon from "../common/Icon";
 import { assetUrl, workspaceApi } from "../../api/endpoints/workspaceApi";
+import DashboardCard from "./DashboardCard";
 
-export default function DashboardLibrary({ visible, chats }) {
+// Сохранённые дашборды из всех чатов пользователя (GET /agent/dashboards).
+export default function DashboardLibrary({ visible, chats, onOpenChat }) {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("loading");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) return undefined;
     let cancelled = false;
-    workspaceApi.listDashboards().then((rows) => {
-      if (!cancelled) { setItems(rows); setStatus("ready"); }
-    }).catch(() => { if (!cancelled) setStatus("error"); });
-    return () => { cancelled = true; };
+    workspaceApi
+      .listDashboards()
+      .then((rows) => {
+        if (cancelled) return;
+        setItems(rows);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [visible, chats, revision]);
-  return <div className="dashboard-library">
-    <h2>Сохранённые дашборды</h2>
-    <button className="btn btn-secondary" onClick={() => setRevision((r) => r + 1)}>Обновить</button>
-    {status === "loading" && <p role="status">Загружаем дашборды…</p>}
-    {status === "error" && <p role="alert">Не удалось загрузить дашборды. Попробуйте обновить список.</p>}
-    {status === "ready" && items.length === 0 && <p>Пока нет сохранённых дашбордов. Прикрепите CSV или подключите таблицу во вкладке источников, затем попросите в чате: «Создай дашборд по этим данным».</p>}
-    {items.map((item) => <figure className="dashboard-card" key={item.id}>
-      <figcaption><strong>{item.title || "Дашборд"}</strong><p>{item.chat_title}</p></figcaption>
-      <a href={assetUrl(item.url)} target="_blank" rel="noopener noreferrer">
-        <img src={assetUrl(item.url)} alt={item.title || "Дашборд"} loading="lazy" />
-      </a>
-      <a className="btn btn-secondary" href={assetUrl(item.url)} download>Скачать PNG</a>
-    </figure>)}
-  </div>;
+  function refresh() {
+    setStatus("loading");
+    setRevision((r) => r + 1);
+  }
+  return (
+    <div className="dash-library">
+      <div className="dash-bar">
+        <p className="muted small">Все дашборды, сохранённые в ваших чатах.</p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={status === "loading"}
+          onClick={refresh}
+        >
+          <Icon name="retry" />
+          Обновить
+        </button>
+      </div>
+      {status === "loading" && (
+        <p className="muted center" role="status">
+          Загружаем дашборды…
+        </p>
+      )}
+      {status === "error" && (
+        <div className="err-box" role="alert">
+          <p>
+            <Icon name="alert" />
+            Не удалось загрузить дашборды. Попробуйте обновить список.
+          </p>
+        </div>
+      )}
+      {status === "ready" && items.length === 0 && (
+        <p className="muted center">
+          Пока нет сохранённых дашбордов. Прикрепите CSV или подключите таблицу
+          во вкладке источников, затем попросите в чате: «Создай дашборд по этим
+          данным».
+        </p>
+      )}
+      {items.length > 0 && (
+        <ul className="dash-grid">
+          {items.map((item) => {
+            const chat = chats.find((c) => c.serverId === item.chat_id);
+            return (
+              <DashboardCard
+                key={item.id}
+                chart={item}
+                subtitle={item.chat_title}
+                actions={
+                  <>
+                    <a
+                      className="btn btn-secondary btn-sm"
+                      href={assetUrl(item.url)}
+                      download
+                    >
+                      Скачать PNG
+                    </a>
+                    {chat && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => onOpenChat(chat.id)}
+                      >
+                        Перейти в чат
+                      </button>
+                    )}
+                  </>
+                }
+              />
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }

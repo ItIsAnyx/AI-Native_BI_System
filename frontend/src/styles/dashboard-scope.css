@@ -1,0 +1,9 @@
+/* Вкладка Dashboard: переключатель «Этот чат / Все чаты» и библиотека дашбордов */
+.app .dash-scope { align-self: flex-start; display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--w-glass); backdrop-filter: blur(12px); }
+.app .dash-scope button { min-height: 34px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 550; transition: background 0.15s, color 0.15s; }
+.app .dash-scope button:hover { color: var(--text); }
+.app .dash-scope button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.app .dash-library { display: flex; flex-direction: column; gap: 18px; }
+.app .dash-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.app .dash-bar p { margin: 0; }
+.app .dash-sub { margin: 0; color: var(--accent); }

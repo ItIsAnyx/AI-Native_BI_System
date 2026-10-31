@@ -1,84 +1,43 @@
-import { assetUrl } from "../../api/endpoints/workspaceApi";
-import {
-  aggregationLabel,
-  chartTitle,
-  chartTypeLabel,
-  collectCharts,
-  isDashboard,
-} from "../../features/workspace/charts";
+import { useState } from "react";
+import "../../styles/dashboard-scope.css";
+import { collectCharts, isDashboard } from "../../features/workspace/charts";
+import DashboardCard from "./DashboardCard";
+import DashboardLibrary from "./DashboardLibrary";
 import WorkspacePlaceholder from "./WorkspacePlaceholder";
 
-function PanelList({ panels }) {
+const SCOPES = [
+  { id: "chat", label: "Этот чат" },
+  { id: "all", label: "Все чаты" },
+];
+
+function Section({ id, title, items, onOpenMessage }) {
+  if (!items.length) return null;
   return (
-    <ul className="dash-panels">
-      {panels.map((panel, index) => {
-        const aggregation = aggregationLabel(panel.aggregation);
-        return (
-          <li key={`${panel.title}-${index}`}>
-            <strong>{panel.title || `${panel.y_column} по ${panel.x_column}`}</strong>
-            <span className="muted small">
-              {chartTypeLabel(panel.chart_type)} · {panel.y_column} по{" "}
-              {panel.x_column}
-              {aggregation ? ` · ${aggregation}` : ""}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <section aria-labelledby={id}>
+      <h2 id={id}>{title}</h2>
+      <ul className="dash-grid">
+        {items.map(({ chart, messageId }) => (
+          <DashboardCard
+            key={chart.id}
+            chart={chart}
+            actions={
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => onOpenMessage(messageId)}
+              >
+                Показать в чате
+              </button>
+            }
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function DashboardCard({ item, onOpenMessage }) {
-  const { chart, messageId } = item;
-  const dashboard = isDashboard(chart);
-  const url = assetUrl(chart.url);
-  return (
-    <li className="dash-card">
-      <a
-        className="dash-thumb"
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`Открыть: ${chartTitle(chart)}`}
-      >
-        <img src={url} alt="" loading="lazy" />
-      </a>
-      <div className="dash-info">
-        <h3>{chartTitle(chart)}</h3>
-        <p className="muted small">
-          {chartTypeLabel(chart.chart_type)}
-          {dashboard && chart.panels?.length
-            ? ` · ${chart.panels.length} панелей`
-            : ""}
-          {` · ${chart.plotted_points.toLocaleString("ru-RU")} точек`}
-        </p>
-        {dashboard && chart.panels?.length > 0 && (
-          <PanelList panels={chart.panels} />
-        )}
-        <div className="dash-actions">
-          <a
-            className="btn btn-secondary btn-sm"
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Открыть
-          </a>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => onOpenMessage(messageId)}
-          >
-            Показать в чате
-          </button>
-        </div>
-      </div>
-    </li>
-  );
-}
-
-// Галерея сохранённых дашбордов и графиков текущего чата (из его истории).
-export default function DashboardPanel({ chat, onOpenMessage }) {
+// Графики и дашборды текущего чата (из его истории) либо дашборды всех чатов.
+function ChatCharts({ chat, onOpenMessage }) {
   if (chat?.loading)
     return (
       <p className="muted center" role="status">
@@ -93,29 +52,50 @@ export default function DashboardPanel({ chat, onOpenMessage }) {
         дашборд — он сохранится здесь.
       </WorkspacePlaceholder>
     );
-  const dashboards = items.filter((i) => isDashboard(i.chart));
-  const charts = items.filter((i) => !isDashboard(i.chart));
+  return (
+    <>
+      <Section
+        id="dash-h"
+        title="Дашборды"
+        items={items.filter((i) => isDashboard(i.chart))}
+        onOpenMessage={onOpenMessage}
+      />
+      <Section
+        id="charts-h"
+        title="Графики"
+        items={items.filter((i) => !isDashboard(i.chart))}
+        onOpenMessage={onOpenMessage}
+      />
+    </>
+  );
+}
+
+export default function DashboardPanel({
+  chat,
+  chats,
+  visible,
+  onOpenMessage,
+  onOpenChat,
+}) {
+  const [scope, setScope] = useState("chat");
   return (
     <div className="dash">
-      {dashboards.length > 0 && (
-        <section aria-labelledby="dash-h">
-          <h2 id="dash-h">Дашборды</h2>
-          <ul className="dash-grid">
-            {dashboards.map((item) => (
-              <DashboardCard key={item.chart.id} item={item} onOpenMessage={onOpenMessage} />
-            ))}
-          </ul>
-        </section>
-      )}
-      {charts.length > 0 && (
-        <section aria-labelledby="charts-h">
-          <h2 id="charts-h">Графики</h2>
-          <ul className="dash-grid">
-            {charts.map((item) => (
-              <DashboardCard key={item.chart.id} item={item} onOpenMessage={onOpenMessage} />
-            ))}
-          </ul>
-        </section>
+      <div className="dash-scope" role="group" aria-label="Какие дашборды показывать">
+        {SCOPES.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={scope === item.id}
+            onClick={() => setScope(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {scope === "chat" ? (
+        <ChatCharts chat={chat} onOpenMessage={onOpenMessage} />
+      ) : (
+        <DashboardLibrary visible={visible} chats={chats} onOpenChat={onOpenChat} />
       )}
     </div>
   );

@@ -118,6 +118,7 @@ export default function Workspace() {
           workspace={workspace}
           onSend={send}
           onOpenMessage={openMessage}
+          onOpenChat={selectChat}
           notify={notify}
         />
       </main>
