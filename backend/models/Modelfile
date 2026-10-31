@@ -1,4 +1,4 @@
-FROM ./Qwen3.8-4B-Q4_K_M.gguf
+FROM ./Qwen3.5-9B-Q4_K_M.gguf
 PARAMETER num_ctx 40960
 PARAMETER temperature 0.6
 PARAMETER top_p 0.95
